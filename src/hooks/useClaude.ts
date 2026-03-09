@@ -48,7 +48,7 @@ export function useClaude(apiKey: string | null) {
     }
   };
 
-  const explainTask = async (taskTitle: string, imageBlob: Blob, language: string = 'en'): Promise<TaskExplanation> => {
+  const explainTask = async (taskTitle: string, imageBlob: Blob, language: string = 'en', jobContext?: { name: string; description?: string; address?: string }): Promise<TaskExplanation> => {
     if (!apiKey) {
       throw new Error('API key is not configured. Please add your Claude API key in settings.');
     }
@@ -56,7 +56,7 @@ export function useClaude(apiKey: string | null) {
     try {
       setLoading(true);
       setError(null);
-      const result = await claudeAPI.explainTask(taskTitle, imageBlob, apiKey, language);
+      const result = await claudeAPI.explainTask(taskTitle, imageBlob, apiKey, language, jobContext);
       return result;
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Failed to explain task';

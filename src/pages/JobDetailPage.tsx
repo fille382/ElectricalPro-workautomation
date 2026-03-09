@@ -168,7 +168,11 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
     setTaskExplanations((prev) => ({ ...prev, [task.id]: { explanation: null, loading: true } }));
 
     try {
-      const result = await explainTask(task.title, sourcePhoto.image_data, language);
+      const result = await explainTask(task.title, sourcePhoto.image_data, language, {
+        name: job.name,
+        description: job.description || undefined,
+        address: job.address || undefined,
+      });
 
       // Create sub-tasks from the AI response
       const subtaskIds: string[] = [];

@@ -310,7 +310,8 @@ export async function explainTask(
   taskTitle: string,
   imageBlob: Blob,
   apiKey: string,
-  language: string = 'en'
+  language: string = 'en',
+  jobContext?: { name: string; description?: string; address?: string }
 ): Promise<TaskExplanation> {
   if (!apiKey) {
     throw new Error('Claude API key is required');
@@ -336,9 +337,13 @@ export async function explainTask(
 
   const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
 
+  const jobInfo = jobContext
+    ? `\n\nJOB CONTEXT:\n- Job: ${jobContext.name}${jobContext.description ? `\n- Description: ${jobContext.description}` : ''}${jobContext.address ? `\n- Address: ${jobContext.address}` : ''}\n`
+    : '';
+
   const prompt = `You are a Swedish electrical expert on site with an electrician. They have this task from a photo analysis:
 
-"${taskTitle}"
+"${taskTitle}"${jobInfo}
 
 Look at the photo and provide:
 1. A detailed explanation of what needs to be done and why
