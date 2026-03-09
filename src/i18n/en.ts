@@ -74,6 +74,14 @@ const en = {
   'camera.upload': 'Upload',
   'camera.retake': 'Retake',
   'camera.or': 'or',
+  'camera.tryAgain': 'Try Again',
+  'camera.permissionDenied': 'Camera access blocked',
+  'camera.permissionDeniedDesc': 'You need to allow camera access in your browser settings:',
+  'camera.permissionStep1': 'Click the lock/settings icon in the address bar',
+  'camera.permissionStep2': 'Find "Camera" and set it to "Allow"',
+  'camera.permissionStep3': 'Reload the page and try again',
+  'camera.notAvailable': 'Camera not available',
+  'camera.notAvailableDesc': 'No camera found on this device, or the page is not served over HTTPS. You can upload a photo instead.',
 
   // PhotoGallery
   'photo.analyzing': 'Analyzing...',

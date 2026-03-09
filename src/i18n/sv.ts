@@ -76,6 +76,14 @@ const sv: Translations = {
   'camera.upload': 'Ladda upp',
   'camera.retake': 'Ta om',
   'camera.or': 'eller',
+  'camera.tryAgain': 'Försök igen',
+  'camera.permissionDenied': 'Kameraåtkomst blockerad',
+  'camera.permissionDeniedDesc': 'Du behöver tillåta kameraåtkomst i webbläsarens inställningar:',
+  'camera.permissionStep1': 'Klicka på lås-/inställningsikonen i adressfältet',
+  'camera.permissionStep2': 'Hitta "Kamera" och ställ in på "Tillåt"',
+  'camera.permissionStep3': 'Ladda om sidan och försök igen',
+  'camera.notAvailable': 'Kamera ej tillgänglig',
+  'camera.notAvailableDesc': 'Ingen kamera hittades på enheten, eller sidan körs inte över HTTPS. Du kan ladda upp ett foto istället.',
 
   // PhotoGallery
   'photo.analyzing': 'Analyserar...',
