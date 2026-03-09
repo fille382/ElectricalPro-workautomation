@@ -28,6 +28,8 @@ const sv: Translations = {
   'job.addTask': 'Lägg till uppgift',
   'job.noTasks': 'Inga uppgifter ännu. Skapa en för att börja!',
   'job.completed': 'Avslutade',
+  'job.manualTasks': 'Manuella uppgifter',
+  'job.photoTasks': 'Fotouppgifter',
   'job.photos': 'Foton',
   'job.photo': 'Foto',
   'job.noPhotos': 'Inga foton ännu',

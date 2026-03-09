@@ -29,6 +29,7 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
   const [analyzingPhotoIds, setAnalyzingPhotoIds] = useState<Set<string>>(new Set());
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [showCompleted, setShowCompleted] = useState(false);
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [taskExplanations, setTaskExplanations] = useState<Record<string, { explanation: string | null; loading: boolean; subtaskIds?: string[] }>>({});
 
   const job = jobs.find((j) => j.id === jobId);
@@ -48,6 +49,44 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
   const completedTasks = topLevelTasks.filter((tk) => tk.status === 'completed');
   const activeTasks = topLevelTasks.filter((tk) => tk.status !== 'completed');
   const getSubTasks = (parentId: string) => tasks.filter((tk) => tk.parent_task_id === parentId);
+
+  // Group active tasks by source photo
+  const taskGroups = (() => {
+    const groups: { key: string; label: string; tasks: typeof activeTasks }[] = [];
+    const byPhoto = new Map<string, typeof activeTasks>();
+    const manual: typeof activeTasks = [];
+
+    for (const task of activeTasks) {
+      if (task.source_photo_id) {
+        const existing = byPhoto.get(task.source_photo_id) || [];
+        existing.push(task);
+        byPhoto.set(task.source_photo_id, existing);
+      } else {
+        manual.push(task);
+      }
+    }
+
+    if (manual.length > 0) {
+      groups.push({ key: 'manual', label: t('job.manualTasks'), tasks: manual });
+    }
+
+    for (const [photoId, photoTasks] of byPhoto) {
+      const photo = photos.find((p) => p.id === photoId);
+      const label = photo?.extracted_info?.component_type || t('job.photoTasks');
+      groups.push({ key: photoId, label, tasks: photoTasks });
+    }
+
+    return groups;
+  })();
+
+  const toggleGroup = (key: string) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
 
   const handleDeleteJob = async () => {
     if (confirm(t('job.confirmDelete'))) {
@@ -279,92 +318,112 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
               </div>
             ) : (
               <>
-                {activeTasks.length > 0 && (
-                  <div className="space-y-2 mb-6">
-                    {activeTasks.map((task) => {
-                      const isExpanded = expandedTaskId === task.id;
-                      const explainState = taskExplanations[task.id];
-                      const canExpand = !!task.source_photo_id && !!apiKey;
-                      const hasExplanation = !!explainState?.explanation;
+                {taskGroups.length > 0 && (
+                  <div className="space-y-4 mb-6">
+                    {taskGroups.map((group) => {
+                      const isCollapsed = collapsedGroups.has(group.key);
+                      const doneInGroup = group.tasks.filter((tk) => tk.status === 'completed').length;
 
                       return (
-                        <div key={task.id} className={`card hover:shadow-md transition-shadow ${hasExplanation ? 'border-l-4 border-l-green-500 dark:border-l-green-400' : ''}`}>
-                          <div className="flex items-start gap-3">
-                            <input type="checkbox" checked={task.status === 'completed'} onChange={(e) => updateTask(task.id, { status: e.target.checked ? 'completed' : 'pending' })} className="mt-1 cursor-pointer" />
-                            <div
-                              className={`flex-1 min-w-0 ${canExpand ? 'cursor-pointer' : ''}`}
-                              onClick={() => canExpand && handleExplainTask(task)}
+                        <div key={group.key}>
+                          {taskGroups.length > 1 && (
+                            <button
+                              onClick={() => toggleGroup(group.key)}
+                              className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
                             >
-                              <div className="flex items-center gap-2">
-                                <h3 className="font-medium text-blue-900 dark:text-gray-100">{task.title}</h3>
-                                {canExpand && (
-                                  hasExplanation ? (
-                                    <svg className={`w-4 h-4 text-green-500 dark:text-green-400 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                    </svg>
-                                  ) : (
-                                    <svg className={`w-4 h-4 text-blue-500 dark:text-blue-400 transition-transform flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-                                    </svg>
-                                  )
-                                )}
-                              </div>
-                              {task.description && <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{task.description}</p>}
-                              {task.notes && <p className="text-sm text-gray-500 dark:text-gray-500 mt-2 italic">{task.notes}</p>}
-                            </div>
-                            <button onClick={() => { deleteTask(task.id); if (expandedTaskId === task.id) setExpandedTaskId(null); setTaskExplanations((prev) => { const next = { ...prev }; delete next[task.id]; return next; }); }} className="text-red-600 hover:text-red-700 transition-colors flex-shrink-0">
-                              <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                                <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                              <svg className={`w-4 h-4 transition-transform ${isCollapsed ? '' : 'rotate-90'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
                               </svg>
+                              <span className="capitalize">{group.label}</span>
+                              <span className="text-gray-400 dark:text-gray-500 font-normal">({group.tasks.length - doneInGroup})</span>
                             </button>
-                          </div>
+                          )}
 
-                          {/* Inline AI explanation + sub-tasks */}
-                          {isExpanded && (
-                            <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
-                              {explainState?.loading ? (
-                                <div className="flex items-center gap-3 py-4">
-                                  <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin flex-shrink-0" />
-                                  <p className="text-sm text-gray-600 dark:text-gray-400">{t('job.analyzingWithPhoto')}</p>
-                                </div>
-                              ) : explainState?.explanation ? (
-                                <>
-                                  <div className="text-sm text-gray-700 dark:text-gray-300 space-y-2">
-                                    {explainState.explanation.split('\n').map((line, i) => (
-                                      line.trim() === '' ? <div key={i} className="h-1" /> : <p key={i}>{line}</p>
-                                    ))}
-                                  </div>
+                          {!isCollapsed && (
+                            <div className="space-y-2">
+                              {group.tasks.map((task) => {
+                                const isExpanded = expandedTaskId === task.id;
+                                const explainState = taskExplanations[task.id];
+                                const canExpand = !!task.source_photo_id && !!apiKey;
+                                const hasExplanation = !!explainState?.explanation;
 
-                                  {/* Sub-tasks checklist */}
-                                  {(() => {
-                                    const subtasks = getSubTasks(task.id);
-                                    if (subtasks.length === 0) return null;
-                                    const doneCount = subtasks.filter((st) => st.status === 'completed').length;
-                                    return (
-                                      <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-600">
-                                        <div className="flex items-center justify-between mb-2">
-                                          <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">{t('job.tasks')} ({doneCount}/{subtasks.length})</p>
+                                return (
+                                  <div key={task.id} className={`card hover:shadow-md transition-shadow ${hasExplanation ? 'border-l-4 border-l-green-500 dark:border-l-green-400' : ''}`}>
+                                    <div className="flex items-start gap-3">
+                                      <input type="checkbox" checked={task.status === 'completed'} onChange={(e) => updateTask(task.id, { status: e.target.checked ? 'completed' : 'pending' })} className="mt-1 cursor-pointer" />
+                                      <div
+                                        className={`flex-1 min-w-0 ${canExpand ? 'cursor-pointer' : ''}`}
+                                        onClick={() => canExpand && handleExplainTask(task)}
+                                      >
+                                        <div className="flex items-center gap-2">
+                                          <h3 className="font-medium text-blue-900 dark:text-gray-100">{task.title}</h3>
+                                          {canExpand && (
+                                            <svg className={`w-4 h-4 ${hasExplanation ? 'text-green-500 dark:text-green-400' : 'text-blue-500 dark:text-blue-400'} transition-transform flex-shrink-0 ${isExpanded ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                                            </svg>
+                                          )}
                                         </div>
-                                        <div className="space-y-1.5">
-                                          {subtasks.map((st) => (
-                                            <label key={st.id} className="flex items-center gap-2 py-1 px-2 rounded hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors">
-                                              <input
-                                                type="checkbox"
-                                                checked={st.status === 'completed'}
-                                                onChange={(e) => { e.stopPropagation(); updateTask(st.id, { status: e.target.checked ? 'completed' : 'pending' }); }}
-                                                className="cursor-pointer flex-shrink-0"
-                                              />
-                                              <span className={`text-sm ${st.status === 'completed' ? 'line-through text-gray-400 dark:text-gray-500' : 'text-gray-700 dark:text-gray-300'}`}>
-                                                {st.title}
-                                              </span>
-                                            </label>
-                                          ))}
-                                        </div>
+                                        {task.description && <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{task.description}</p>}
+                                        {task.notes && <p className="text-sm text-gray-500 dark:text-gray-500 mt-2 italic">{task.notes}</p>}
                                       </div>
-                                    );
-                                  })()}
-                                </>
-                              ) : null}
+                                      <button onClick={() => { deleteTask(task.id); if (expandedTaskId === task.id) setExpandedTaskId(null); setTaskExplanations((prev) => { const next = { ...prev }; delete next[task.id]; return next; }); }} className="text-red-600 hover:text-red-700 transition-colors flex-shrink-0">
+                                        <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                          <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                                        </svg>
+                                      </button>
+                                    </div>
+
+                                    {/* Inline AI explanation + sub-tasks */}
+                                    {isExpanded && (
+                                      <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+                                        {explainState?.loading ? (
+                                          <div className="flex items-center gap-3 py-4">
+                                            <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+                                            <p className="text-sm text-gray-600 dark:text-gray-400">{t('job.analyzingWithPhoto')}</p>
+                                          </div>
+                                        ) : explainState?.explanation ? (
+                                          <>
+                                            <div className="text-sm text-gray-700 dark:text-gray-300 space-y-2">
+                                              {explainState.explanation.split('\n').map((line, i) => (
+                                                line.trim() === '' ? <div key={i} className="h-1" /> : <p key={i}>{line}</p>
+                                              ))}
+                                            </div>
+
+                                            {/* Sub-tasks checklist */}
+                                            {(() => {
+                                              const subtasks = getSubTasks(task.id);
+                                              if (subtasks.length === 0) return null;
+                                              const doneCount = subtasks.filter((st) => st.status === 'completed').length;
+                                              return (
+                                                <div className="mt-4 pt-3 border-t border-gray-100 dark:border-gray-600">
+                                                  <div className="flex items-center justify-between mb-2">
+                                                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide">{t('job.tasks')} ({doneCount}/{subtasks.length})</p>
+                                                  </div>
+                                                  <div className="space-y-1.5">
+                                                    {subtasks.map((st) => (
+                                                      <label key={st.id} className="flex items-center gap-2 py-1 px-2 rounded hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors">
+                                                        <input
+                                                          type="checkbox"
+                                                          checked={st.status === 'completed'}
+                                                          onChange={(e) => { e.stopPropagation(); updateTask(st.id, { status: e.target.checked ? 'completed' : 'pending' }); }}
+                                                          className="cursor-pointer flex-shrink-0"
+                                                        />
+                                                        <span className={`text-sm ${st.status === 'completed' ? 'line-through text-gray-400 dark:text-gray-500' : 'text-gray-700 dark:text-gray-300'}`}>
+                                                          {st.title}
+                                                        </span>
+                                                      </label>
+                                                    ))}
+                                                  </div>
+                                                </div>
+                                              );
+                                            })()}
+                                          </>
+                                        ) : null}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
                             </div>
                           )}
                         </div>

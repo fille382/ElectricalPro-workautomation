@@ -26,6 +26,8 @@ const en = {
   'job.addTask': 'Add Task',
   'job.noTasks': 'No tasks yet. Create one to get started!',
   'job.completed': 'Completed',
+  'job.manualTasks': 'Manual tasks',
+  'job.photoTasks': 'Photo tasks',
   'job.photos': 'Photos',
   'job.photo': 'Photo',
   'job.noPhotos': 'No photos yet',
