@@ -180,5 +180,5 @@ const en = {
 } as const;
 
 export type TranslationKey = keyof typeof en;
-export type Translations = typeof en;
+export type Translations = Record<TranslationKey, string>;
 export default en;
