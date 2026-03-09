@@ -63,8 +63,8 @@ const en = {
   'taskForm.titleRequired': 'Task title is required',
 
   // CameraCapture
-  'camera.capturePanel': 'Capture Panel Photo',
-  'camera.takeClearPhoto': 'Take a clear photo of the electrical panel',
+  'camera.capturePanel': 'Take Photo',
+  'camera.takeClearPhoto': 'Take a photo of the electrical work',
   'camera.openCamera': 'Open Camera',
   'camera.chooseFromLibrary': 'Choose from Library',
   'camera.capture': 'Capture',
@@ -92,7 +92,9 @@ const en = {
   'photoDetail.title': 'Photo Details',
   'photoDetail.loadingImage': 'Loading image...',
   'photoDetail.captured': 'Captured:',
-  'photoDetail.panelInfo': 'Panel Information',
+  'photoDetail.panelInfo': 'Analysis',
+  'photoDetail.componentType': 'Type:',
+  'photoDetail.locationNotes': 'Location:',
   'photoDetail.manufacturer': 'Manufacturer:',
   'photoDetail.model': 'Model:',
   'photoDetail.voltage': 'Voltage:',

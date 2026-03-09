@@ -34,8 +34,9 @@ export interface Photo {
   created_at: number;
 }
 
-// Electrical panel extraction result
+// Electrical analysis result (panels, wiring, outlets, switches, etc.)
 export interface ElectricalPanelInfo {
+  component_type?: string;       // e.g. "panel", "outlet", "wiring", "junction box", "switch"
   manufacturer?: string;
   model?: string;
   voltage?: string;
@@ -43,6 +44,7 @@ export interface ElectricalPanelInfo {
   circuits?: number;
   compliance_marks?: string[];
   condition?: string;
+  location_notes?: string;       // what part of the installation this shows
   recommendations?: string[];
   raw_analysis?: string;
 }

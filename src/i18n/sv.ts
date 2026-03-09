@@ -65,8 +65,8 @@ const sv: Translations = {
   'taskForm.titleRequired': 'Uppgiftstitel kr\u00e4vs',
 
   // CameraCapture
-  'camera.capturePanel': 'Fotografera elcentral',
-  'camera.takeClearPhoto': 'Ta ett tydligt foto av elcentralen',
+  'camera.capturePanel': 'Ta foto',
+  'camera.takeClearPhoto': 'Ta ett foto av elarbetet',
   'camera.openCamera': '\u00d6ppna kamera',
   'camera.chooseFromLibrary': 'V\u00e4lj fr\u00e5n bibliotek',
   'camera.capture': 'Fotografera',
@@ -94,7 +94,9 @@ const sv: Translations = {
   'photoDetail.title': 'Fotodetaljer',
   'photoDetail.loadingImage': 'Laddar bild...',
   'photoDetail.captured': 'Tagen:',
-  'photoDetail.panelInfo': 'Panelinformation',
+  'photoDetail.panelInfo': 'Analys',
+  'photoDetail.componentType': 'Typ:',
+  'photoDetail.locationNotes': 'Plats:',
   'photoDetail.manufacturer': 'Tillverkare:',
   'photoDetail.model': 'Modell:',
   'photoDetail.voltage': 'Sp\u00e4nning:',

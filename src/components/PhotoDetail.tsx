@@ -75,7 +75,7 @@ export default function PhotoDetail({ photo, cachedPhotoURL, onClose, apiKey, on
             {photoURL ? (
               <img
                 src={photoURL}
-                alt="Electrical panel"
+                alt="Electrical work photo"
                 className="w-full rounded-lg"
                 onError={(e) => {
                   (e.target as HTMLImageElement).alt = 'Unable to load image';
@@ -95,6 +95,20 @@ export default function PhotoDetail({ photo, cachedPhotoURL, onClose, apiKey, on
           {info ? (
             <div className="bg-blue-50 dark:bg-gray-700/50 rounded-lg p-4 space-y-4">
               <h3 className="font-bold text-blue-900 dark:text-gray-100">{t('photoDetail.panelInfo')}</h3>
+
+              {info.component_type && (
+                <div className="grid grid-cols-2 gap-2">
+                  <span className="text-gray-600 dark:text-gray-400">{t('photoDetail.componentType')}</span>
+                  <span className="font-medium dark:text-gray-200 capitalize">{info.component_type}</span>
+                </div>
+              )}
+
+              {info.location_notes && (
+                <div className="grid grid-cols-2 gap-2">
+                  <span className="text-gray-600 dark:text-gray-400">{t('photoDetail.locationNotes')}</span>
+                  <span className="font-medium dark:text-gray-200">{info.location_notes}</span>
+                </div>
+              )}
 
               {info.manufacturer && (
                 <div className="grid grid-cols-2 gap-2">

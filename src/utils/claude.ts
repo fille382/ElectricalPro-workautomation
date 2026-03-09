@@ -152,25 +152,29 @@ export async function analyzeElectricalPanel(
 
   const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
 
-  const prompt = `You are a Swedish electrical expert. Analyze this electrical panel image. Decide yourself how deep to go based on what you see — if the image is clear and detailed, provide comprehensive analysis including Swedish standards (SS 436, ELSÄK-FS, BBR). If the image is blurry or shows little detail, just extract what you can.
+  const prompt = `You are a Swedish electrical expert. Analyze this photo from an electrical work site. It could show anything electrical — a panel, wiring, outlets, switches, junction boxes, conduit, cable trays, grounding, lighting, or any part of an installation. Identify what you see and provide a professional assessment.
+
+Decide yourself how deep to go based on what you see — if the image is clear and detailed, provide comprehensive analysis including Swedish standards (SS 436, ELSÄK-FS, BBR). If the image is blurry or shows little detail, just extract what you can.
 
 Format your response as a JSON object:
 
 {
+  "component_type": "What the photo shows, e.g. 'panel', 'outlet', 'wiring', 'junction box', 'switch', 'lighting', 'grounding', 'cable tray', 'conduit', 'general installation'",
   "manufacturer": "Brand/manufacturer name if visible, otherwise null",
   "model": "Model number if visible, otherwise null",
-  "voltage": "Voltage rating (e.g., 400V, 230V) if visible",
-  "amperage": "Amperage/current rating if visible",
-  "circuits": "Number of circuit breakers/modules visible",
+  "voltage": "Voltage rating if visible or relevant",
+  "amperage": "Amperage/current rating if visible or relevant",
+  "circuits": "Number of circuits/breakers if applicable, otherwise null",
   "compliance_marks": ["Visible compliance marks like CE, Swedish Standards"],
   "condition": "Visual condition assessment: excellent/good/fair/poor",
-  "recommendations": ["Actionable work tasks for the electrician, e.g. 'Replace worn circuit breaker #3', 'Label unmarked circuits', 'Check grounding connections'"],
-  "raw_analysis": "Your analysis of the installation"
+  "location_notes": "What part of the installation this shows and any context",
+  "recommendations": ["Actionable work tasks for the electrician, e.g. 'Replace damaged cable insulation', 'Tighten loose terminal connections', 'Add missing cable strain relief'"],
+  "raw_analysis": "Your full analysis of what you see"
 }
 
 Focus on Swedish electrical standards compliance (SE standard, 3-phase systems, safety requirements). Only include fields you can actually determine from the image. Make recommendations specific and actionable — they will become work tasks for the electrician on site.
 
-${language === 'sv' ? 'IMPORTANT: Write your ENTIRE response in Swedish (svenska). All field values in the JSON — especially "recommendations" and "raw_analysis" — MUST be in Swedish.' : ''}`;
+${language === 'sv' ? 'IMPORTANT: Write your ENTIRE response in Swedish (svenska). All field values in the JSON — especially "component_type", "recommendations", "location_notes" and "raw_analysis" — MUST be in Swedish.' : ''}`;
 
   try {
     console.log('[AI] Calling claude-sonnet-4-20250514...');
@@ -340,7 +344,7 @@ export async function explainTask(
 
   const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
 
-  const prompt = `You are a Swedish electrical expert on site with an electrician. They have this task from a panel analysis:
+  const prompt = `You are a Swedish electrical expert on site with an electrician. They have this task from a photo analysis:
 
 "${taskTitle}"
 
