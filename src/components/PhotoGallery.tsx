@@ -11,9 +11,11 @@ interface PhotoGalleryProps {
   onDelete?: (photoId: string) => Promise<void>;
   analyzingPhotoIds?: Set<string>;
   jobContext?: { name: string; description?: string; address?: string };
+  onShowTasks?: (photoId: string) => void;
+  photoTaskCounts?: Record<string, number>;
 }
 
-function PhotoThumbnail({ photo, onClick, isAnalyzing, onDelete }: { photo: Photo; onClick: (dataUrl: string | null) => void; isAnalyzing: boolean; onDelete?: (photoId: string) => void }) {
+function PhotoThumbnail({ photo, onClick, onTextClick, isAnalyzing, onDelete, taskCount }: { photo: Photo; onClick: (dataUrl: string | null) => void; onTextClick?: () => void; isAnalyzing: boolean; onDelete?: (photoId: string) => void; taskCount?: number }) {
   const { t } = useTranslation();
   const [imageUrl, setImageUrl] = useState<string | null>(null);
 
@@ -25,10 +27,15 @@ function PhotoThumbnail({ photo, onClick, isAnalyzing, onDelete }: { photo: Phot
     return () => { mounted = false; };
   }, [photo.id]);
 
+  const hasTaskLink = onTextClick && taskCount && taskCount > 0;
+
   return (
-    <div className="card cursor-pointer hover:shadow-md transition-shadow" onClick={() => onClick(imageUrl)}>
+    <div className="card hover:shadow-md transition-shadow">
       <div className="flex gap-3">
-        <div className="w-20 h-20 flex-shrink-0 bg-gray-200 dark:bg-gray-700 rounded-lg overflow-hidden relative">
+        <div
+          className="w-20 h-20 flex-shrink-0 bg-gray-200 dark:bg-gray-700 rounded-lg overflow-hidden relative cursor-pointer"
+          onClick={() => onClick(imageUrl)}
+        >
           {imageUrl ? (
             <img src={imageUrl} alt="Panel" className="w-full h-full object-cover" />
           ) : (
@@ -36,14 +43,16 @@ function PhotoThumbnail({ photo, onClick, isAnalyzing, onDelete }: { photo: Phot
               <span className="text-xs text-gray-500 dark:text-gray-400">...</span>
             </div>
           )}
-          {/* Analyzing spinner overlay */}
           {isAnalyzing && (
             <div className="absolute inset-0 bg-black bg-opacity-40 flex items-center justify-center rounded-lg">
               <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin" />
             </div>
           )}
         </div>
-        <div className="flex-1 min-w-0">
+        <div
+          className={`flex-1 min-w-0 ${hasTaskLink ? 'cursor-pointer' : ''}`}
+          onClick={hasTaskLink ? onTextClick : () => onClick(imageUrl)}
+        >
           <p className="text-sm text-gray-600 dark:text-gray-400">{new Date(photo.created_at).toLocaleDateString()}</p>
           {isAnalyzing ? (
             <p className="text-sm text-blue-600 dark:text-blue-400 font-medium flex items-center gap-2">
@@ -65,6 +74,14 @@ function PhotoThumbnail({ photo, onClick, isAnalyzing, onDelete }: { photo: Phot
                 <p className="font-medium text-blue-900 dark:text-gray-100 truncate">{photo.extracted_info.manufacturer}</p>
               )}
               {!photo.extracted_info && <p className="text-sm text-gray-500 dark:text-gray-400 italic">{t('photo.noAnalysis')}</p>}
+              {hasTaskLink && (
+                <p className="text-xs text-blue-600 dark:text-blue-400 mt-1 flex items-center gap-1">
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                  </svg>
+                  {taskCount} {t('job.tasks').toLowerCase()}
+                </p>
+              )}
             </>
           )}
         </div>
@@ -79,15 +96,12 @@ function PhotoThumbnail({ photo, onClick, isAnalyzing, onDelete }: { photo: Phot
             </svg>
           </button>
         )}
-        <svg className="w-5 h-5 text-gray-400 dark:text-gray-500 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-        </svg>
       </div>
     </div>
   );
 }
 
-export default function PhotoGallery({ photos, apiKey, onAnalyze, onDelete, analyzingPhotoIds = new Set(), jobContext }: PhotoGalleryProps) {
+export default function PhotoGallery({ photos, apiKey, onAnalyze, onDelete, analyzingPhotoIds = new Set(), jobContext, onShowTasks, photoTaskCounts }: PhotoGalleryProps) {
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
   const [selectedPhotoURL, setSelectedPhotoURL] = useState<string | null>(null);
 
@@ -104,8 +118,10 @@ export default function PhotoGallery({ photos, apiKey, onAnalyze, onDelete, anal
             key={photo.id}
             photo={photo}
             onClick={(dataUrl) => handlePhotoClick(photo, dataUrl)}
+            onTextClick={onShowTasks ? () => onShowTasks(photo.id) : undefined}
             isAnalyzing={analyzingPhotoIds.has(photo.id)}
             onDelete={onDelete}
+            taskCount={photoTaskCounts?.[photo.id]}
           />
         ))}
       </div>

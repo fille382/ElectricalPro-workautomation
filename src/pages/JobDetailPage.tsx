@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useJobs, useTasks, usePhotos } from '../hooks/useIndexedDB';
@@ -79,6 +79,8 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
     return groups;
   })();
 
+  const groupRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
   const toggleGroup = (key: string) => {
     setCollapsedGroups((prev) => {
       const next = new Set(prev);
@@ -87,6 +89,27 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
       return next;
     });
   };
+
+  const handleShowTasks = useCallback((photoId: string) => {
+    // Open the group if collapsed
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      next.delete(photoId);
+      return next;
+    });
+    // Scroll to it after render
+    requestAnimationFrame(() => {
+      groupRefs.current[photoId]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }, []);
+
+  // Count tasks per photo for the gallery badges
+  const photoTaskCounts: Record<string, number> = {};
+  for (const task of activeTasks) {
+    if (task.source_photo_id) {
+      photoTaskCounts[task.source_photo_id] = (photoTaskCounts[task.source_photo_id] || 0) + 1;
+    }
+  }
 
   const handleDeleteJob = async () => {
     if (confirm(t('job.confirmDelete'))) {
@@ -325,7 +348,7 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
                       const doneInGroup = group.tasks.filter((tk) => tk.status === 'completed').length;
 
                       return (
-                        <div key={group.key}>
+                        <div key={group.key} ref={(el) => { groupRefs.current[group.key] = el; }}>
                           {taskGroups.length > 1 && (
                             <button
                               onClick={() => toggleGroup(group.key)}
@@ -483,7 +506,7 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
               <p>{t('job.noPhotos')}</p>
             </div>
           ) : (
-            <PhotoGallery photos={photos} apiKey={apiKey} onAnalyze={handleManualAnalyze} onDelete={handleDeletePhoto} analyzingPhotoIds={analyzingPhotoIds} jobContext={{ name: job.name, description: job.description || undefined, address: job.address || undefined }} />
+            <PhotoGallery photos={photos} apiKey={apiKey} onAnalyze={handleManualAnalyze} onDelete={handleDeletePhoto} analyzingPhotoIds={analyzingPhotoIds} jobContext={{ name: job.name, description: job.description || undefined, address: job.address || undefined }} onShowTasks={handleShowTasks} photoTaskCounts={photoTaskCounts} />
           )}
         </div>
       </div>
