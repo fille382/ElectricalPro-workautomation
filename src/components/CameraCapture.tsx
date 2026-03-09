@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import toast from 'react-hot-toast';
 import { useTranslation } from '../contexts/I18nContext';
 
@@ -15,10 +15,19 @@ export default function CameraCapture({ onCapture, onClose, loading }: CameraCap
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const pendingStream = useRef<MediaStream | null>(null);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<Blob | null>(null);
   const [permissionState, setPermissionState] = useState<PermissionState>('unknown');
+
+  // Attach pending stream to video element after it renders
+  useEffect(() => {
+    if (isCameraActive && pendingStream.current && videoRef.current) {
+      videoRef.current.srcObject = pendingStream.current;
+      pendingStream.current = null;
+    }
+  }, [isCameraActive]);
 
   const startCamera = async () => {
     // Check if mediaDevices API is available (requires HTTPS or localhost)
@@ -46,11 +55,9 @@ export default function CameraCapture({ onCapture, onClose, loading }: CameraCap
       const stream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: 'environment' },
       });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        setIsCameraActive(true);
-        setPermissionState('granted');
-      }
+      pendingStream.current = stream;
+      setIsCameraActive(true);
+      setPermissionState('granted');
     } catch (error: any) {
       if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
         setPermissionState('denied');
@@ -138,11 +145,16 @@ export default function CameraCapture({ onCapture, onClose, loading }: CameraCap
   };
 
   const stopCamera = () => {
-    if (videoRef.current && videoRef.current.srcObject) {
+    if (videoRef.current?.srcObject) {
       const stream = videoRef.current.srcObject as MediaStream;
       stream.getTracks().forEach((track) => track.stop());
-      setIsCameraActive(false);
+      videoRef.current.srcObject = null;
     }
+    if (pendingStream.current) {
+      pendingStream.current.getTracks().forEach((track) => track.stop());
+      pendingStream.current = null;
+    }
+    setIsCameraActive(false);
   };
 
   const handleClose = () => {
