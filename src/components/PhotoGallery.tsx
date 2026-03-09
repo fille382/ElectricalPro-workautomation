@@ -10,6 +10,7 @@ interface PhotoGalleryProps {
   onAnalyze?: (photoId: string, analysis: any) => Promise<any>;
   onDelete?: (photoId: string) => Promise<void>;
   analyzingPhotoIds?: Set<string>;
+  jobContext?: { name: string; description?: string; address?: string };
 }
 
 function PhotoThumbnail({ photo, onClick, isAnalyzing, onDelete }: { photo: Photo; onClick: (dataUrl: string | null) => void; isAnalyzing: boolean; onDelete?: (photoId: string) => void }) {
@@ -83,7 +84,7 @@ function PhotoThumbnail({ photo, onClick, isAnalyzing, onDelete }: { photo: Phot
   );
 }
 
-export default function PhotoGallery({ photos, apiKey, onAnalyze, onDelete, analyzingPhotoIds = new Set() }: PhotoGalleryProps) {
+export default function PhotoGallery({ photos, apiKey, onAnalyze, onDelete, analyzingPhotoIds = new Set(), jobContext }: PhotoGalleryProps) {
   const [selectedPhoto, setSelectedPhoto] = useState<Photo | null>(null);
   const [selectedPhotoURL, setSelectedPhotoURL] = useState<string | null>(null);
 
@@ -114,6 +115,7 @@ export default function PhotoGallery({ photos, apiKey, onAnalyze, onDelete, anal
           apiKey={apiKey}
           onAnalyze={onAnalyze}
           onDelete={onDelete ? async (photoId) => { await onDelete(photoId); setSelectedPhoto(null); setSelectedPhotoURL(null); } : undefined}
+          jobContext={jobContext}
         />
       )}
     </>

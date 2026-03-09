@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useTranslation } from '../contexts/I18nContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { useDebugLog } from '../contexts/DebugLogContext';
 
 interface SettingsPageProps {
   apiKey: string | null;
@@ -15,6 +16,7 @@ export default function SettingsPage({ apiKey, onApiKeyChange }: SettingsPagePro
   const navigate = useNavigate();
   const { t, language, languageSetting, setLanguage } = useTranslation();
   const { themeSetting, setTheme } = useTheme();
+  const { enabled: debugEnabled, setEnabled: setDebugEnabled } = useDebugLog();
 
   const handleSaveApiKey = () => {
     if (!tempApiKey.trim()) {
@@ -64,6 +66,18 @@ export default function SettingsPage({ apiKey, onApiKeyChange }: SettingsPagePro
               <option value="light">{t('settings.themeLight')}</option>
               <option value="dark">{t('settings.themeDark')}</option>
             </select>
+          </div>
+          <div className="flex items-center justify-between">
+            <div>
+              <label className="label-text mb-0">{t('settings.debugLog')}</label>
+              <p className="text-xs text-gray-500 dark:text-gray-400">{t('settings.debugLogDesc')}</p>
+            </div>
+            <button
+              onClick={() => setDebugEnabled(!debugEnabled)}
+              className={`relative w-12 h-6 rounded-full transition-colors ${debugEnabled ? 'bg-blue-600' : 'bg-gray-300 dark:bg-gray-600'}`}
+            >
+              <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${debugEnabled ? 'translate-x-6' : ''}`} />
+            </button>
           </div>
         </div>
       </div>

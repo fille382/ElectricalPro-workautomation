@@ -98,20 +98,48 @@ export default function CameraCapture({ onCapture, onClose, loading }: CameraCap
     }
   };
 
-  const confirmCapture = () => {
-    if (selectedFile) {
-      onCapture(selectedFile);
-      setPreview(null);
-      setSelectedFile(null);
-    } else if (canvasRef.current) {
-      canvasRef.current.toBlob((blob) => {
-        if (blob) {
-          onCapture(blob);
-          stopCamera();
-          setPreview(null);
-        }
-      }, 'image/jpeg', 0.9);
+  const confirmCapture = async () => {
+    if (!preview) return;
+
+    try {
+      // Load the preview data URL (already in memory) into an Image to resize via canvas
+      const img = new Image();
+      img.src = preview;
+      await new Promise<void>((resolve, reject) => {
+        img.onload = () => resolve();
+        img.onerror = () => reject(new Error('Image load failed'));
+      });
+
+      const maxWidth = 1200;
+      let width = img.width;
+      let height = img.height;
+      if (width > maxWidth) {
+        height = Math.round((height * maxWidth) / width);
+        width = maxWidth;
+      }
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext('2d')!.drawImage(img, 0, 0, width, height);
+
+      const compressed = await new Promise<Blob>((resolve) => {
+        canvas.toBlob((b) => resolve(b!), 'image/jpeg', 0.75);
+      });
+
+      console.log(`[Camera] Compressed to ${compressed.size} bytes (${width}x${height})`);
+      onCapture(compressed);
+    } catch (err) {
+      console.error('[Camera] Compression failed, using original:', err);
+      // Fallback: use original file if compression fails
+      if (selectedFile) {
+        onCapture(selectedFile);
+      }
     }
+
+    if (!selectedFile) stopCamera();
+    setPreview(null);
+    setSelectedFile(null);
   };
 
   const stopCamera = () => {

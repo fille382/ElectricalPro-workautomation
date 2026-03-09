@@ -10,9 +10,13 @@ function blobToBase64(blob: Blob): Promise<string> {
     reader.onload = () => {
       const result = reader.result as string;
       const base64 = result.split(',')[1]; // Remove data:image/jpeg;base64, prefix
+      if (!base64) {
+        reject(new Error('Failed to extract base64 from image data'));
+        return;
+      }
       resolve(base64);
     };
-    reader.onerror = reject;
+    reader.onerror = () => reject(new Error('FileReader failed to read image blob'));
     reader.readAsDataURL(blob);
   });
 }
@@ -60,66 +64,37 @@ export function blobToDataURL(data: Blob | ArrayBuffer | string): Promise<string
  * Compress image before sending to Claude (reduce token usage)
  */
 export async function compressImage(blob: Blob, maxWidth = 1200): Promise<Blob> {
-  return new Promise((resolve) => {
-    let isResolved = false;
+  try {
+    // createImageBitmap works directly with Blob — no FileReader, no Image element,
+    // no data URLs. Most memory-efficient approach for mobile.
+    const bitmap = await createImageBitmap(blob);
 
-    const timeout = setTimeout(() => {
-      if (!isResolved) {
-        isResolved = true;
-        resolve(blob); // Use original image if compression times out
-      }
-    }, 15000); // Increased timeout for mobile
+    let width = bitmap.width;
+    let height = bitmap.height;
+    console.log(`[Compress] Original dimensions: ${width}x${height}, size: ${blob.size}`);
 
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const img = new Image();
+    if (width > maxWidth) {
+      height = Math.round((height * maxWidth) / width);
+      width = maxWidth;
+    }
 
-      img.onload = () => {
-        if (isResolved) return;
-        clearTimeout(timeout);
-        isResolved = true;
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d')!;
+    ctx.drawImage(bitmap, 0, 0, width, height);
+    bitmap.close(); // Free decoded image memory immediately
 
-        const canvas = document.createElement('canvas');
-        let width = img.width;
-        let height = img.height;
+    const compressed = await new Promise<Blob>((resolve) => {
+      canvas.toBlob((b) => resolve(b || blob), 'image/jpeg', 0.75);
+    });
 
-        if (width > maxWidth) {
-          height = Math.round((height * maxWidth) / width);
-          width = maxWidth;
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d')!;
-        ctx.drawImage(img, 0, 0, width, height);
-
-        canvas.toBlob((compressedBlob) => {
-          if (!isResolved) {
-            isResolved = true;
-            resolve(compressedBlob || blob);
-          }
-        }, 'image/jpeg', 0.8);
-      };
-
-      img.onerror = () => {
-        if (isResolved) return;
-        clearTimeout(timeout);
-        isResolved = true;
-        resolve(blob); // Fallback to original blob
-      };
-
-      img.src = e.target?.result as string;
-    };
-
-    reader.onerror = () => {
-      if (isResolved) return;
-      clearTimeout(timeout);
-      isResolved = true;
-      resolve(blob); // Fallback to original on read error
-    };
-
-    reader.readAsDataURL(blob);
-  });
+    console.log(`[Compress] Done: ${blob.size} -> ${compressed.size} bytes (${width}x${height})`);
+    return compressed;
+  } catch (err) {
+    console.error('[Compress] Failed:', err);
+    return blob;
+  }
 }
 
 /**
@@ -128,7 +103,8 @@ export async function compressImage(blob: Blob, maxWidth = 1200): Promise<Blob> 
 export async function analyzeElectricalPanel(
   imageBlob: Blob,
   apiKey: string,
-  language: string = 'en'
+  language: string = 'en',
+  jobContext?: { name: string; description?: string; address?: string }
 ): Promise<ElectricalPanelInfo> {
   if (!apiKey) {
     throw new Error('Claude API key is required');
@@ -136,14 +112,13 @@ export async function analyzeElectricalPanel(
 
   console.log('[AI] Starting analysis, image size:', imageBlob.size, 'bytes');
 
-  // Skip compression for small images (< 500KB) — canvas hangs on mobile
+  // Images should already be compressed at capture time, but compress as safety net
   let compressedImage: Blob;
-  if (imageBlob.size > 500000) {
-    console.log('[AI] Large image, compressing...');
+  if (imageBlob.size > 1000000) {
+    console.log('[AI] Image still large, compressing...');
     compressedImage = await compressImage(imageBlob);
     console.log('[AI] Compressed:', imageBlob.size, '->', compressedImage.size, 'bytes');
   } else {
-    console.log('[AI] Small image, skipping compression');
     compressedImage = imageBlob;
   }
 
@@ -152,7 +127,11 @@ export async function analyzeElectricalPanel(
 
   const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
 
-  const prompt = `You are a Swedish electrical expert. Analyze this photo from an electrical work site. It could show anything electrical — a panel, wiring, outlets, switches, junction boxes, conduit, cable trays, grounding, lighting, or any part of an installation. Identify what you see and provide a professional assessment.
+  const jobInfo = jobContext
+    ? `\n\nJOB CONTEXT — this photo belongs to the following job:\n- Job: ${jobContext.name}${jobContext.description ? `\n- Description: ${jobContext.description}` : ''}${jobContext.address ? `\n- Address: ${jobContext.address}` : ''}\n\nUse this context to understand what part of the building/installation the photo shows. Do NOT guess the room or location — use the job description.\n`
+    : '';
+
+  const prompt = `You are a Swedish electrical expert. Analyze this photo from an electrical work site. It could show anything electrical — a panel, wiring, outlets, switches, junction boxes, conduit, cable trays, grounding, lighting, or any part of an installation. Identify what you see and provide a professional assessment.${jobInfo}
 
 Decide yourself how deep to go based on what you see — if the image is clear and detailed, provide comprehensive analysis including Swedish standards (SS 436, ELSÄK-FS, BBR). If the image is blurry or shows little detail, just extract what you can.
 
@@ -247,7 +226,9 @@ ${language === 'sv' ? 'IMPORTANT: Write your ENTIRE response in Swedish (svenska
     if (error instanceof Error) {
       throw new Error(`Failed to analyze image: ${error.message}`);
     }
-    throw error;
+    // Handle non-Error objects (e.g., DOM events with {isTrusted: true})
+    const msg = typeof error === 'object' ? JSON.stringify(error) : String(error);
+    throw new Error(`Failed to analyze image: ${msg}`);
   }
 }
 
@@ -430,6 +411,7 @@ ${language === 'sv' ? 'IMPORTANT: Write your ENTIRE response in Swedish (svenska
     if (error instanceof Error) {
       throw new Error(`Failed to explain task: ${error.message}`);
     }
-    throw error;
+    const msg = typeof error === 'object' ? JSON.stringify(error) : String(error);
+    throw new Error(`Failed to explain task: ${msg}`);
   }
 }

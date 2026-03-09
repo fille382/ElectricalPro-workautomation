@@ -4,10 +4,12 @@ import { Toaster, toast } from 'react-hot-toast';
 import * as db from './utils/db';
 import { I18nProvider } from './contexts/I18nContext';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { DebugLogProvider } from './contexts/DebugLogContext';
 import HomePage from './pages/HomePage';
 import JobDetailPage from './pages/JobDetailPage';
 import SettingsPage from './pages/SettingsPage';
 import Header from './components/Header';
+import DebugPanel from './components/DebugPanel';
 import './App.css';
 
 function App() {
@@ -65,35 +67,38 @@ function App() {
   }
 
   return (
-    <I18nProvider
-      initialLanguage={initialLanguage}
-      onLanguageChange={async (lang) => {
-        const settings = await db.getSettings();
-        await db.saveSettings({ ...settings, language: lang === 'auto' ? undefined : lang });
-      }}
-    >
-      <ThemeProvider
-        initialTheme={initialTheme}
-        onThemeChange={async (theme) => {
+    <DebugLogProvider>
+      <I18nProvider
+        initialLanguage={initialLanguage}
+        onLanguageChange={async (lang) => {
           const settings = await db.getSettings();
-          await db.saveSettings({ ...settings, theme: theme === 'system' ? undefined : theme });
+          await db.saveSettings({ ...settings, language: lang === 'auto' ? undefined : lang });
         }}
       >
-        <Router>
-          <div className="min-h-screen bg-blue-50 dark:bg-gray-900 transition-colors">
-            <Header apiKey={apiKey} />
-            <main className="pb-20 md:pb-0">
-              <Routes>
-                <Route path="/" element={<HomePage apiKey={apiKey} />} />
-                <Route path="/job/:jobId" element={<JobDetailPage apiKey={apiKey} />} />
-                <Route path="/settings" element={<SettingsPage apiKey={apiKey} onApiKeyChange={handleApiKeyChange} />} />
-              </Routes>
-            </main>
-            <Toaster position="bottom-center" />
-          </div>
-        </Router>
-      </ThemeProvider>
-    </I18nProvider>
+        <ThemeProvider
+          initialTheme={initialTheme}
+          onThemeChange={async (theme) => {
+            const settings = await db.getSettings();
+            await db.saveSettings({ ...settings, theme: theme === 'system' ? undefined : theme });
+          }}
+        >
+          <Router>
+            <div className="min-h-screen bg-blue-50 dark:bg-gray-900 transition-colors">
+              <Header apiKey={apiKey} />
+              <main className="pb-20 md:pb-0">
+                <Routes>
+                  <Route path="/" element={<HomePage apiKey={apiKey} />} />
+                  <Route path="/job/:jobId" element={<JobDetailPage apiKey={apiKey} />} />
+                  <Route path="/settings" element={<SettingsPage apiKey={apiKey} onApiKeyChange={handleApiKeyChange} />} />
+                </Routes>
+              </main>
+              <Toaster position="bottom-center" />
+              <DebugPanel />
+            </div>
+          </Router>
+        </ThemeProvider>
+      </I18nProvider>
+    </DebugLogProvider>
   );
 }
 

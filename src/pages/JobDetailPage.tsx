@@ -67,7 +67,11 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
     setAnalyzingPhotoIds((prev) => new Set(prev).add(photoId));
 
     try {
-      const analysis = await analyzePanel(imageBlob, language);
+      const analysis = await analyzePanel(imageBlob, language, {
+        name: job.name,
+        description: job.description || undefined,
+        address: job.address || undefined,
+      });
       console.log('[AUTO] Analysis complete, saving...');
       await updatePhotoExtraction(photoId, analysis);
 
@@ -397,7 +401,7 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
               <p>{t('job.noPhotos')}</p>
             </div>
           ) : (
-            <PhotoGallery photos={photos} apiKey={apiKey} onAnalyze={handleManualAnalyze} onDelete={handleDeletePhoto} analyzingPhotoIds={analyzingPhotoIds} />
+            <PhotoGallery photos={photos} apiKey={apiKey} onAnalyze={handleManualAnalyze} onDelete={handleDeletePhoto} analyzingPhotoIds={analyzingPhotoIds} jobContext={{ name: job.name, description: job.description || undefined, address: job.address || undefined }} />
           )}
         </div>
       </div>

@@ -12,9 +12,10 @@ interface PhotoDetailProps {
   apiKey?: string | null;
   onAnalyze?: (photoId: string, analysis: any) => Promise<any>;
   onDelete?: (photoId: string) => Promise<void>;
+  jobContext?: { name: string; description?: string; address?: string };
 }
 
-export default function PhotoDetail({ photo, cachedPhotoURL, onClose, apiKey, onAnalyze, onDelete }: PhotoDetailProps) {
+export default function PhotoDetail({ photo, cachedPhotoURL, onClose, apiKey, onAnalyze, onDelete, jobContext }: PhotoDetailProps) {
   const { t, language } = useTranslation();
   const info = photo.extracted_info;
   const { analyzePanel, loading: analyzing } = useClaude(apiKey || null);
@@ -45,7 +46,7 @@ export default function PhotoDetail({ photo, cachedPhotoURL, onClose, apiKey, on
     }
 
     try {
-      const analysis = await analyzePanel(photo.image_data, language);
+      const analysis = await analyzePanel(photo.image_data, language, jobContext);
       if (onAnalyze) {
         await onAnalyze(photo.id, analysis);
       }

@@ -145,6 +145,8 @@ const en = {
   'settings.themeSystem': 'System',
   'settings.themeLight': 'Light',
   'settings.themeDark': 'Dark',
+  'settings.debugLog': 'Debug Log',
+  'settings.debugLogDesc': 'Show on-screen log for mobile debugging',
 
   // App
   'app.loading': 'Loading Electrician App...',
