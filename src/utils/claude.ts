@@ -100,11 +100,18 @@ export async function compressImage(blob: Blob, maxWidth = 1200): Promise<Blob> 
 /**
  * Analyze electrical panel image with Claude Vision
  */
+export interface PreviousPhotoSummary {
+  component_type?: string;
+  condition?: string;
+  recommendations?: string[];
+}
+
 export async function analyzeElectricalPanel(
   imageBlob: Blob,
   apiKey: string,
   language: string = 'en',
-  jobContext?: { name: string; description?: string; address?: string }
+  jobContext?: { name: string; description?: string; address?: string },
+  previousPhotos?: PreviousPhotoSummary[]
 ): Promise<ElectricalPanelInfo> {
   if (!apiKey) {
     throw new Error('Claude API key is required');
@@ -131,7 +138,11 @@ export async function analyzeElectricalPanel(
     ? `\n\nJOB CONTEXT — this photo belongs to the following job:\n- Job: ${jobContext.name}${jobContext.description ? `\n- Description: ${jobContext.description}` : ''}${jobContext.address ? `\n- Address: ${jobContext.address}` : ''}\n\nUse this context to understand what part of the building/installation the photo shows. Do NOT guess the room or location — use the job description.\n`
     : '';
 
-  const prompt = `You are a Swedish electrical expert. Analyze this photo from an electrical work site. It could show anything electrical — a panel, wiring, outlets, switches, junction boxes, conduit, cable trays, grounding, lighting, or any part of an installation. Identify what you see and provide a professional assessment.${jobInfo}
+  const prevInfo = previousPhotos && previousPhotos.length > 0
+    ? `\n\nPREVIOUS PHOTOS already analyzed for this job:\n${previousPhotos.map((p, i) => `${i + 1}. ${p.component_type || 'unknown'}${p.condition ? ` (${p.condition})` : ''}${p.recommendations?.length ? ` — ${p.recommendations.join('; ')}` : ''}`).join('\n')}\n\nAvoid duplicate recommendations. Reference previous findings if relevant.\n`
+    : '';
+
+  const prompt = `You are a Swedish electrical expert. Analyze this photo from an electrical work site. It could show anything electrical — a panel, wiring, outlets, switches, junction boxes, conduit, cable trays, grounding, lighting, or any part of an installation. Identify what you see and provide a professional assessment.${jobInfo}${prevInfo}
 
 Decide yourself how deep to go based on what you see — if the image is clear and detailed, provide comprehensive analysis including Swedish standards (SS 436, ELSÄK-FS, BBR). If the image is blurry or shows little detail, just extract what you can.
 

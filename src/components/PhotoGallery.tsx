@@ -55,11 +55,14 @@ function PhotoThumbnail({ photo, onClick, isAnalyzing, onDelete }: { photo: Phot
             </p>
           ) : (
             <>
-              {photo.extracted_info?.manufacturer && (
-                <p className="font-medium text-blue-900 dark:text-gray-100 truncate">{photo.extracted_info.manufacturer}</p>
+              {photo.extracted_info?.component_type && (
+                <p className="font-medium text-blue-900 dark:text-gray-100 truncate capitalize">{photo.extracted_info.component_type}</p>
               )}
-              {photo.extracted_info?.voltage && (
-                <p className="text-sm text-gray-600 dark:text-gray-400">{photo.extracted_info.voltage}</p>
+              {photo.extracted_info?.condition && (
+                <p className="text-sm text-gray-600 dark:text-gray-400 capitalize">{photo.extracted_info.condition}</p>
+              )}
+              {photo.extracted_info && !photo.extracted_info.component_type && photo.extracted_info.manufacturer && (
+                <p className="font-medium text-blue-900 dark:text-gray-100 truncate">{photo.extracted_info.manufacturer}</p>
               )}
               {!photo.extracted_info && <p className="text-sm text-gray-500 dark:text-gray-400 italic">{t('photo.noAnalysis')}</p>}
             </>

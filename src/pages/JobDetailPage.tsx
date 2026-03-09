@@ -28,6 +28,7 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
   const [showCamera, setShowCamera] = useState(false);
   const [analyzingPhotoIds, setAnalyzingPhotoIds] = useState<Set<string>>(new Set());
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  const [showCompleted, setShowCompleted] = useState(false);
   const [taskExplanations, setTaskExplanations] = useState<Record<string, { explanation: string | null; loading: boolean; subtaskIds?: string[] }>>({});
 
   const job = jobs.find((j) => j.id === jobId);
@@ -67,11 +68,19 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
     setAnalyzingPhotoIds((prev) => new Set(prev).add(photoId));
 
     try {
+      const previousPhotos = photos
+        .filter((p) => p.id !== photoId && p.extracted_info)
+        .map((p) => ({
+          component_type: p.extracted_info?.component_type,
+          condition: p.extracted_info?.condition,
+          recommendations: p.extracted_info?.recommendations,
+        }));
+
       const analysis = await analyzePanel(imageBlob, language, {
         name: job.name,
         description: job.description || undefined,
         address: job.address || undefined,
-      });
+      }, previousPhotos);
       console.log('[AUTO] Analysis complete, saving...');
       await updatePhotoExtraction(photoId, analysis);
 
@@ -362,19 +371,29 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
 
                 {completedTasks.length > 0 && (
                   <div>
-                    <h3 className="text-sm font-medium text-gray-600 dark:text-gray-400 mb-2">{t('job.completed')} ({completedTasks.length})</h3>
-                    <div className="space-y-2 opacity-60">
-                      {completedTasks.map((task) => (
-                        <div key={task.id} className="card">
-                          <div className="flex items-center gap-3">
-                            <input type="checkbox" checked={true} onChange={() => updateTask(task.id, { status: 'pending' })} className="cursor-pointer" />
-                            <div className="flex-1">
-                              <h3 className="font-medium line-through text-gray-600 dark:text-gray-400">{task.title}</h3>
+                    <button
+                      onClick={() => setShowCompleted(!showCompleted)}
+                      className="flex items-center gap-2 text-sm font-medium text-gray-600 dark:text-gray-400 mb-2 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
+                    >
+                      <svg className={`w-4 h-4 transition-transform ${showCompleted ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                      {t('job.completed')} ({completedTasks.length})
+                    </button>
+                    {showCompleted && (
+                      <div className="space-y-2 opacity-60">
+                        {completedTasks.map((task) => (
+                          <div key={task.id} className="card">
+                            <div className="flex items-center gap-3">
+                              <input type="checkbox" checked={true} onChange={() => updateTask(task.id, { status: 'pending' })} className="cursor-pointer" />
+                              <div className="flex-1">
+                                <h3 className="font-medium line-through text-gray-600 dark:text-gray-400">{task.title}</h3>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 )}
               </>
