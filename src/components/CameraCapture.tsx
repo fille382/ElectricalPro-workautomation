@@ -17,7 +17,6 @@ export default function CameraCapture({ onCapture, onClose, loading }: CameraCap
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
-  const [cameraFailed, setCameraFailed] = useState(false);
   const [selectedFile, setSelectedFile] = useState<Blob | null>(null);
   const [permissionState, setPermissionState] = useState<PermissionState>('unknown');
 
@@ -25,7 +24,6 @@ export default function CameraCapture({ onCapture, onClose, loading }: CameraCap
     // Check if mediaDevices API is available (requires HTTPS or localhost)
     if (!navigator.mediaDevices?.getUserMedia) {
       setPermissionState('unavailable');
-      setCameraFailed(true);
       return;
     }
 
@@ -37,7 +35,6 @@ export default function CameraCapture({ onCapture, onClose, loading }: CameraCap
         const result = await navigator.permissions.query({ name: 'camera' as PermissionName });
         if (result.state === 'denied') {
           setPermissionState('denied');
-          setCameraFailed(true);
           return;
         }
       }
@@ -52,11 +49,9 @@ export default function CameraCapture({ onCapture, onClose, loading }: CameraCap
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
         setIsCameraActive(true);
-        setCameraFailed(false);
         setPermissionState('granted');
       }
     } catch (error: any) {
-      setCameraFailed(true);
       if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
         setPermissionState('denied');
       } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
@@ -216,35 +211,35 @@ export default function CameraCapture({ onCapture, onClose, loading }: CameraCap
                 </>
               )}
 
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleFileSelect}
+                className="hidden"
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="btn-primary w-full mb-3 flex items-center justify-center gap-2"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+                {t('camera.chooseFromLibrary')}
+              </button>
+
               {permissionState !== 'unavailable' && (
                 <button
                   onClick={startCamera}
                   disabled={permissionState === 'checking'}
-                  className="btn-primary w-full mb-3 disabled:opacity-50 flex items-center justify-center gap-2"
+                  className="btn-secondary w-full disabled:opacity-50 flex items-center justify-center gap-2"
                 >
                   {permissionState === 'checking' && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+                  </svg>
                   {permissionState === 'denied' ? t('camera.tryAgain') : t('camera.openCamera')}
                 </button>
-              )}
-
-              {/* File upload fallback — always shown when camera fails */}
-              {cameraFailed && (
-                <div className="space-y-3">
-                  <p className="text-sm text-gray-500 dark:text-gray-400">{t('camera.or')}</p>
-                  <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={handleFileSelect}
-                    className="hidden"
-                  />
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="btn-secondary w-full"
-                  >
-                    {t('camera.chooseFromLibrary')}
-                  </button>
-                </div>
               )}
             </div>
           )}
