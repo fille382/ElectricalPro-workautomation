@@ -29,6 +29,7 @@ export interface Photo {
   job_id: string;
   task_id?: string;
   image_data: Blob;
+  image_hash?: string;
   extracted_info?: ElectricalPanelInfo;
   user_notes: string;
   created_at: number;

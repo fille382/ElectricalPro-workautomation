@@ -179,6 +179,7 @@ const en = {
   'toast.sourcePhotoNotFound': 'Source photo not found',
   'toast.analyzedSuccess': 'Photo analyzed successfully!',
   'toast.explainFailed': 'Failed: {msg}',
+  'toast.duplicatePhotoWarning': 'This photo has already been uploaded for this job. Upload anyway?',
 } as const;
 
 export type TranslationKey = keyof typeof en;

@@ -9,6 +9,7 @@ import TaskForm from '../components/TaskForm';
 import CameraCapture from '../components/CameraCapture';
 import PhotoGallery from '../components/PhotoGallery';
 import type { Task } from '../types';
+import { computeImageHash } from '../utils/imageHash';
 
 interface JobDetailPageProps {
   apiKey: string | null;
@@ -178,11 +179,26 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
 
   const handleCapturePhoto = async (blob: Blob) => {
     try {
-      const newPhoto = await addPhoto({ job_id: job.id, image_data: blob, user_notes: '' });
+      // Compute hash for duplicate detection (fails gracefully)
+      const hash = await computeImageHash(blob);
+
+      if (hash) {
+        const duplicate = photos.find((p) => p.image_hash === hash);
+        if (duplicate) {
+          const proceed = confirm(t('toast.duplicatePhotoWarning'));
+          if (!proceed) {
+            setShowCamera(false);
+            return;
+          }
+        }
+      }
+
+      const newPhoto = await addPhoto({ job_id: job.id, image_data: blob, image_hash: hash, user_notes: '' });
       setShowCamera(false);
       toast.success(t('toast.photoUploaded'));
       if (apiKey) runAnalysis(newPhoto.id, blob);
-    } catch {
+    } catch (err) {
+      console.error('[Photo] Failed to save photo:', err);
       toast.error(t('toast.photoSaveFailed'));
     }
   };

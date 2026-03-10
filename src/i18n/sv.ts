@@ -181,6 +181,7 @@ const sv: Translations = {
   'toast.sourcePhotoNotFound': 'Källfoto hittades inte',
   'toast.analyzedSuccess': 'Foto analyserat!',
   'toast.explainFailed': 'Misslyckades: {msg}',
+  'toast.duplicatePhotoWarning': 'Det här fotot har redan laddats upp för detta jobb. Ladda upp ändå?',
 };
 
 export default sv;
