@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from '../contexts/I18nContext';
+import AddressAutocomplete from './AddressAutocomplete';
 import type { Job } from '../types';
 
 interface JobFormProps {
@@ -44,12 +45,11 @@ export default function JobForm({ job, onSubmit, onCancel }: JobFormProps) {
 
       <div>
         <label className="label-text">{t('jobForm.address')}</label>
-        <input
-          type="text"
+        <AddressAutocomplete
           className="input-field"
           placeholder={t('jobForm.addressPlaceholder')}
           value={formData.address}
-          onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+          onChange={(address) => setFormData({ ...formData, address })}
         />
       </div>
 

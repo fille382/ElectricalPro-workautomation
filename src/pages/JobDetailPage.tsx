@@ -31,6 +31,18 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
   const [showCompleted, setShowCompleted] = useState(false);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [taskExplanations, setTaskExplanations] = useState<Record<string, { explanation: string | null; loading: boolean; subtaskIds?: string[] }>>({});
+  const groupRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  const handleShowTasks = useCallback((photoId: string) => {
+    setCollapsedGroups((prev) => {
+      const next = new Set(prev);
+      next.delete(photoId);
+      return next;
+    });
+    requestAnimationFrame(() => {
+      groupRefs.current[photoId]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  }, []);
 
   const job = jobs.find((j) => j.id === jobId);
 
@@ -79,8 +91,6 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
     return groups;
   })();
 
-  const groupRefs = useRef<Record<string, HTMLDivElement | null>>({});
-
   const toggleGroup = (key: string) => {
     setCollapsedGroups((prev) => {
       const next = new Set(prev);
@@ -89,19 +99,6 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
       return next;
     });
   };
-
-  const handleShowTasks = useCallback((photoId: string) => {
-    // Open the group if collapsed
-    setCollapsedGroups((prev) => {
-      const next = new Set(prev);
-      next.delete(photoId);
-      return next;
-    });
-    // Scroll to it after render
-    requestAnimationFrame(() => {
-      groupRefs.current[photoId]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    });
-  }, []);
 
   // Count tasks per photo for the gallery badges
   const photoTaskCounts: Record<string, number> = {};
@@ -282,12 +279,17 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
             <h1 className="text-3xl font-bold text-blue-900 dark:text-gray-100 mb-2">{job.name}</h1>
             <div className="flex flex-col gap-2 text-gray-700 dark:text-gray-300">
               {job.address && (
-                <p className="flex items-center gap-2">
+                <a
+                  href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(job.address)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                >
                   <svg className="w-5 h-5 text-blue-600 dark:text-blue-400" fill="currentColor" viewBox="0 0 20 20">
                     <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
                   </svg>
-                  {job.address}
-                </p>
+                  <span className="underline underline-offset-2">{job.address}</span>
+                </a>
               )}
               <p className="text-sm text-gray-600 dark:text-gray-400">
                 {t('job.created')} {new Date(job.created_at).toLocaleDateString()}
