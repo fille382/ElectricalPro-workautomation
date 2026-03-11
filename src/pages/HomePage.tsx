@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { useJobs } from '../hooks/useIndexedDB';
+import { useJobs, useSavedContacts } from '../hooks/useIndexedDB';
+import { saveContactsFromJob } from '../utils/db';
 import { useTranslation } from '../contexts/I18nContext';
 import JobForm from '../components/JobForm';
 
@@ -11,6 +12,7 @@ interface HomePageProps {
 
 export default function HomePage({ apiKey }: HomePageProps) {
   const { jobs, loading, createJob } = useJobs();
+  const { savedContacts, refresh: refreshContacts } = useSavedContacts();
   const { t } = useTranslation();
   const [showForm, setShowForm] = useState(false);
 
@@ -20,6 +22,11 @@ export default function HomePage({ apiKey }: HomePageProps) {
         ...jobData,
         status: 'active' as const,
       });
+      // Auto-save contacts to global address book
+      if (jobData.contacts?.length > 0 && jobData.address) {
+        await saveContactsFromJob(jobData.contacts, jobData.address);
+        refreshContacts();
+      }
       setShowForm(false);
       toast.success(t('toast.jobCreated'));
     } catch {
@@ -82,7 +89,7 @@ export default function HomePage({ apiKey }: HomePageProps) {
               </button>
             </div>
             <div className="p-6">
-              <JobForm onSubmit={handleCreateJob} onCancel={() => setShowForm(false)} />
+              <JobForm savedContacts={savedContacts} onSubmit={handleCreateJob} onCancel={() => setShowForm(false)} />
             </div>
           </div>
         </div>
@@ -106,6 +113,7 @@ export default function HomePage({ apiKey }: HomePageProps) {
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex-1">
                     <h3 className="font-bold text-blue-900 dark:text-gray-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors line-clamp-2">{job.name}</h3>
+                    {job.contacts?.[0] && <p className="text-sm text-gray-500 dark:text-gray-400">{job.contacts[0].name}{job.contacts.length > 1 ? ` +${job.contacts.length - 1}` : ''}</p>}
                     <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-1">{job.address}</p>
                   </div>
                   <span className="badge-primary ml-2 flex-shrink-0">{t('home.active')}</span>

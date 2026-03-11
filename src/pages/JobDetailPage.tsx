@@ -1,7 +1,8 @@
 import { useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { useJobs, useTasks, usePhotos } from '../hooks/useIndexedDB';
+import { useJobs, useTasks, usePhotos, useSavedContacts } from '../hooks/useIndexedDB';
+import { saveContactsFromJob } from '../utils/db';
 import { useClaude } from '../hooks/useClaude';
 import { useTranslation } from '../contexts/I18nContext';
 import JobForm from '../components/JobForm';
@@ -23,6 +24,7 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
   const { tasks, createTask, updateTask, deleteTask } = useTasks(jobId || null);
   const { photos, addPhoto, updatePhotoExtraction, deletePhoto } = usePhotos(jobId || null);
   const { analyzePanel, explainTask } = useClaude(apiKey);
+  const { savedContacts, refresh: refreshContacts } = useSavedContacts();
 
   const [showEditJob, setShowEditJob] = useState(false);
   const [showAddTask, setShowAddTask] = useState(false);
@@ -329,6 +331,40 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
           <p className="text-gray-700 dark:text-gray-300 mt-4 p-3 bg-white dark:bg-gray-700 bg-opacity-50 rounded">{job.description}</p>
         )}
 
+        {job.contacts && job.contacts.length > 0 && (
+          <div className="mt-4 p-3 bg-white dark:bg-gray-700 bg-opacity-50 rounded">
+            <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wide mb-2">{t('job.contact')}</p>
+            <div className="space-y-2">
+              {job.contacts.map((contact) => (
+                <div key={contact.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-gray-700 dark:text-gray-300">
+                  <span className="flex items-center gap-1.5">
+                    <span className="px-1.5 py-0.5 text-xs font-medium bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 rounded capitalize">
+                      {t(`jobForm.role${contact.role.charAt(0).toUpperCase()}${contact.role.slice(1)}` as any) || contact.role}
+                    </span>
+                    <span className="font-medium">{contact.name}</span>
+                  </span>
+                  {contact.phone && (
+                    <a href={`tel:${contact.phone}`} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                      <svg className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                      </svg>
+                      <span className="underline underline-offset-2">{contact.phone}</span>
+                    </a>
+                  )}
+                  {contact.email && (
+                    <a href={`mailto:${contact.email}`} className="flex items-center gap-1 hover:text-blue-600 dark:hover:text-blue-400 transition-colors">
+                      <svg className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                      </svg>
+                      <span className="underline underline-offset-2">{contact.email}</span>
+                    </a>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="mt-4 flex items-center gap-4">
           <div className="text-sm">
             <span className="text-gray-700 dark:text-gray-300">{t('job.tasksLabel')} </span>
@@ -532,8 +568,8 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
       {/* Modals */}
       {showEditJob && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40 flex items-center justify-center p-4">
-          <div className="bg-white/95 dark:bg-gray-800/95 rounded-lg shadow-xl w-full max-w-md">
-            <div className="sticky top-0 bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm border-b border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-between">
+          <div className="bg-white/95 dark:bg-gray-800/95 rounded-lg shadow-xl w-full max-w-md max-h-[90vh] flex flex-col">
+            <div className="flex-shrink-0 bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm border-b border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-between rounded-t-lg">
               <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">{t('job.editJob')}</h2>
               <button onClick={() => setShowEditJob(false)} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
                 <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -541,12 +577,18 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
                 </svg>
               </button>
             </div>
-            <div className="p-6">
+            <div className="p-6 overflow-y-auto">
               <JobForm
                 job={job}
+                savedContacts={savedContacts}
                 onSubmit={async (data) => {
                   try {
                     await updateJob(job.id, data);
+                    // Auto-save contacts to global address book
+                    if (data.contacts?.length && data.address) {
+                      await saveContactsFromJob(data.contacts, data.address);
+                      refreshContacts();
+                    }
                     setShowEditJob(false);
                     toast.success(t('toast.jobUpdated'));
                   } catch {
