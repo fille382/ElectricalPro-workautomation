@@ -49,7 +49,7 @@ export default function AddressAutocomplete({ value, onChange, placeholder, clas
   const [suggestions, setSuggestions] = useState<PhotonFeature[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const queryRef = useRef('');
 
