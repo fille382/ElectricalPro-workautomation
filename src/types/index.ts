@@ -1,9 +1,31 @@
+// Contact for a job (client, builder, VVS, electrician, etc.)
+export interface JobContact {
+  id: string;
+  name: string;
+  phone?: string;
+  email?: string;
+  role: string;
+}
+
+// Global address-book contact (auto-saved from jobs)
+export interface SavedContact {
+  id: string;
+  name: string;
+  phone?: string;
+  email?: string;
+  role: string;
+  addresses: string[];  // addresses this contact has been associated with
+  created_at: number;
+  updated_at: number;
+}
+
 // Job types
 export interface Job {
   id: string;
   name: string;
   address: string;
   description: string;
+  contacts?: JobContact[];
   status: 'active' | 'completed' | 'archived';
   created_at: number;
   updated_at: number;

@@ -1,7 +1,7 @@
-import type { Job, Task, Photo, AppSettings } from '../types';
+import type { Job, Task, Photo, AppSettings, SavedContact, JobContact } from '../types';
 
 const DB_NAME = 'electrician_app';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 let db: IDBDatabase | null = null;
 
@@ -45,6 +45,13 @@ export async function initDB(): Promise<IDBDatabase> {
       // Create settings store
       if (!database.objectStoreNames.contains('settings')) {
         database.createObjectStore('settings', { keyPath: 'key' });
+      }
+
+      // Create saved contacts store (global address book)
+      if (!database.objectStoreNames.contains('saved_contacts')) {
+        const contactStore = database.createObjectStore('saved_contacts', { keyPath: 'id' });
+        contactStore.createIndex('name', 'name', { unique: false });
+        contactStore.createIndex('role', 'role', { unique: false });
       }
     };
   });
@@ -391,4 +398,132 @@ export async function saveSettings(settings: AppSettings): Promise<void> {
     request.onerror = () => reject(request.error);
     request.onsuccess = () => resolve();
   });
+}
+
+// ========== SAVED CONTACTS (Global Address Book) ==========
+
+export async function getSavedContacts(): Promise<SavedContact[]> {
+  const database = await getDB();
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(['saved_contacts'], 'readonly');
+    const store = transaction.objectStore('saved_contacts');
+    const request = store.getAll();
+
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const contacts = request.result.sort((a: SavedContact, b: SavedContact) => b.updated_at - a.updated_at);
+      resolve(contacts);
+    };
+  });
+}
+
+export async function createSavedContact(contact: Omit<SavedContact, 'id' | 'created_at' | 'updated_at'>): Promise<SavedContact> {
+  const database = await getDB();
+  const id = `contact_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  const now = Date.now();
+
+  const newContact: SavedContact = {
+    ...contact,
+    id,
+    created_at: now,
+    updated_at: now,
+  };
+
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(['saved_contacts'], 'readwrite');
+    const store = transaction.objectStore('saved_contacts');
+    const request = store.add(newContact);
+
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(newContact);
+  });
+}
+
+export async function updateSavedContact(id: string, updates: Partial<SavedContact>): Promise<SavedContact> {
+  const database = await getDB();
+
+  const existing = await new Promise<SavedContact>((resolve, reject) => {
+    const transaction = database.transaction(['saved_contacts'], 'readonly');
+    const store = transaction.objectStore('saved_contacts');
+    const request = store.get(id);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      if (!request.result) reject(new Error(`Contact ${id} not found`));
+      else resolve(request.result);
+    };
+  });
+
+  const updated: SavedContact = {
+    ...existing,
+    ...updates,
+    id,
+    created_at: existing.created_at,
+    updated_at: Date.now(),
+  };
+
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(['saved_contacts'], 'readwrite');
+    const store = transaction.objectStore('saved_contacts');
+    const request = store.put(updated);
+
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(updated);
+  });
+}
+
+export async function deleteSavedContact(id: string): Promise<void> {
+  const database = await getDB();
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(['saved_contacts'], 'readwrite');
+    const store = transaction.objectStore('saved_contacts');
+    const request = store.delete(id);
+
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve();
+  });
+}
+
+/**
+ * Auto-save job contacts to the global address book.
+ * Upserts by name+role: updates phone/email/address if exists, creates if not.
+ */
+export async function saveContactsFromJob(jobContacts: JobContact[], address: string): Promise<void> {
+  if (!jobContacts || jobContacts.length === 0) return;
+
+  const allSaved = await getSavedContacts();
+  const normalizedAddress = address.trim().toLowerCase();
+
+  for (const jc of jobContacts) {
+    if (!jc.name.trim()) continue;
+
+    const nameNorm = jc.name.trim().toLowerCase();
+    const roleNorm = jc.role.trim().toLowerCase();
+
+    // Find existing by name + role
+    const existing = allSaved.find(
+      (sc) => sc.name.trim().toLowerCase() === nameNorm && sc.role.trim().toLowerCase() === roleNorm
+    );
+
+    if (existing) {
+      // Update phone/email and append address if new
+      const addresses = [...existing.addresses];
+      if (normalizedAddress && !addresses.map((a) => a.toLowerCase()).includes(normalizedAddress)) {
+        addresses.push(address.trim());
+      }
+      await updateSavedContact(existing.id, {
+        phone: jc.phone || existing.phone,
+        email: jc.email || existing.email,
+        addresses,
+      });
+    } else {
+      // Create new saved contact
+      await createSavedContact({
+        name: jc.name.trim(),
+        phone: jc.phone,
+        email: jc.email,
+        role: jc.role,
+        addresses: normalizedAddress ? [address.trim()] : [],
+      });
+    }
+  }
 }

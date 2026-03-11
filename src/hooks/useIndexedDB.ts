@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import * as db from '../utils/db';
-import type { Job, Task, Photo } from '../types';
+import type { Job, Task, Photo, SavedContact } from '../types';
 
 /**
  * Hook to manage jobs
@@ -211,5 +211,38 @@ export function usePhotos(jobId: string | null) {
     updatePhotoExtraction,
     deletePhoto,
     refresh: loadPhotos,
+  };
+}
+
+/**
+ * Hook to manage global saved contacts (address book)
+ */
+export function useSavedContacts() {
+  const [savedContacts, setSavedContacts] = useState<SavedContact[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadContacts = async () => {
+    try {
+      setLoading(true);
+      const result = await db.getSavedContacts();
+      setSavedContacts(result);
+      setError(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to load contacts');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadContacts();
+  }, []);
+
+  return {
+    savedContacts,
+    loading,
+    error,
+    refresh: loadContacts,
   };
 }
