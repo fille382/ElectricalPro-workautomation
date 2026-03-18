@@ -32,14 +32,14 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
   const [analyzingPhotoIds, setAnalyzingPhotoIds] = useState<Set<string>>(new Set());
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [showCompleted, setShowCompleted] = useState(false);
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [taskExplanations, setTaskExplanations] = useState<Record<string, { explanation: string | null; loading: boolean; subtaskIds?: string[] }>>({});
   const groupRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const handleShowTasks = useCallback((photoId: string) => {
-    setCollapsedGroups((prev) => {
+    setExpandedGroups((prev) => {
       const next = new Set(prev);
-      next.delete(photoId);
+      next.add(photoId);
       return next;
     });
     requestAnimationFrame(() => {
@@ -95,7 +95,7 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
   })();
 
   const toggleGroup = (key: string) => {
-    setCollapsedGroups((prev) => {
+    setExpandedGroups((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
       else next.add(key);
@@ -398,23 +398,21 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
                 {taskGroups.length > 0 && (
                   <div className="space-y-4 mb-6">
                     {taskGroups.map((group) => {
-                      const isCollapsed = collapsedGroups.has(group.key);
+                      const isCollapsed = !expandedGroups.has(group.key);
                       const doneInGroup = group.tasks.filter((tk) => tk.status === 'completed').length;
 
                       return (
                         <div key={group.key} ref={(el) => { groupRefs.current[group.key] = el; }}>
-                          {taskGroups.length > 1 && (
-                            <button
-                              onClick={() => toggleGroup(group.key)}
-                              className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-                            >
-                              <svg className={`w-4 h-4 transition-transform ${isCollapsed ? '' : 'rotate-90'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                              </svg>
-                              <span className="capitalize">{group.label}</span>
-                              <span className="text-gray-400 dark:text-gray-500 font-normal">({group.tasks.length - doneInGroup})</span>
-                            </button>
-                          )}
+                          <button
+                            onClick={() => toggleGroup(group.key)}
+                            className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                          >
+                            <svg className={`w-4 h-4 transition-transform ${isCollapsed ? '' : 'rotate-90'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                            <span className="capitalize">{group.label}</span>
+                            <span className="text-gray-400 dark:text-gray-500 font-normal">({group.tasks.length - doneInGroup})</span>
+                          </button>
 
                           {!isCollapsed && (
                             <div className="space-y-2">
