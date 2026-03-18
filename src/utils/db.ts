@@ -4,7 +4,6 @@ const DB_NAME = 'electrician_app';
 const DB_VERSION = 2;
 
 let db: IDBDatabase | null = null;
-let dbReady: Promise<IDBDatabase> | null = null;
 
 /**
  * Initialize the IndexedDB database
@@ -58,69 +57,14 @@ export async function initDB(): Promise<IDBDatabase> {
   });
 }
 
-const DEMO_JOB_ID = 'demo_job_electricalpro';
-
 /**
- * Seed a demo job if the database has no jobs (first launch / after clear)
- */
-async function seedDemoData(database: IDBDatabase): Promise<void> {
-  // Step 1: Check if there are any jobs (read-only)
-  const hasJobs = await new Promise<boolean>((resolve) => {
-    const tx = database.transaction(['jobs'], 'readonly');
-    const req = tx.objectStore('jobs').count();
-    req.onsuccess = () => resolve(req.result > 0);
-    req.onerror = () => resolve(true); // Assume jobs exist on error
-  });
-
-  if (hasJobs) return;
-
-  // Step 2: Seed demo data (read-write)
-  return new Promise((resolve) => {
-    const now = Date.now();
-    const tx = database.transaction(['jobs', 'tasks'], 'readwrite');
-
-    tx.objectStore('jobs').add({
-      id: DEMO_JOB_ID,
-      name: 'Elcentral byte — Villa Ekström',
-      address: 'Björkvägen 12, 752 37 Uppsala',
-      description: 'Byte av elcentral från 1970-tal till modern 3-fas central med jordfelsbrytare. Inkluderar dragning av ny matarledning från mätarskåp och installation av överspänningsskydd.',
-      contacts: [
-        { id: 'demo_c1', name: 'Anna Ekström', phone: '070-123 45 67', email: 'anna.ekstrom@email.se', role: 'Kund' },
-        { id: 'demo_c2', name: 'Erik Johansson', phone: '073-987 65 43', email: '', role: 'Elektriker' },
-        { id: 'demo_c3', name: 'Lundbergs El AB', phone: '018-12 34 56', email: 'info@lundbergsel.se', role: 'Företag' },
-      ],
-      status: 'active',
-      created_at: now,
-      updated_at: now,
-    } as Job);
-
-    const taskStore = tx.objectStore('tasks');
-    const demoTasks: Task[] = [
-      { id: 'demo_t1', job_id: DEMO_JOB_ID, title: 'Stäng av strömmen vid mätarskåp', description: 'Kontakta nätägaren för frånkoppling om nödvändigt', status: 'pending', notes: '', created_at: now, updated_at: now },
-      { id: 'demo_t2', job_id: DEMO_JOB_ID, title: 'Demontera gamla elcentralen', description: 'Dokumentera befintlig koppling med foto innan demontering', status: 'pending', notes: '', created_at: now, updated_at: now },
-      { id: 'demo_t3', job_id: DEMO_JOB_ID, title: 'Montera ny central och jordfelsbrytare', description: 'Hager VU36NW med 4st jordfelsbrytare 30mA', status: 'pending', notes: '', created_at: now, updated_at: now },
-      { id: 'demo_t4', job_id: DEMO_JOB_ID, title: 'Installera överspänningsskydd', description: 'Typ 2 överspänningsskydd vid inkommande', status: 'pending', notes: '', created_at: now, updated_at: now },
-      { id: 'demo_t5', job_id: DEMO_JOB_ID, title: 'Mätning och protokoll', description: 'Isolationsmätning, skyddsjordmätning, kontroll av jordfelsbrytare', status: 'pending', notes: '', created_at: now, updated_at: now },
-    ];
-    for (const task of demoTasks) taskStore.add(task);
-
-    tx.oncomplete = () => { console.log('[DB] Demo job seeded'); resolve(); };
-    tx.onerror = () => resolve();
-  });
-}
-
-/**
- * Get the database instance (singleton — safe for concurrent calls)
+ * Get the database instance
  */
 async function getDB(): Promise<IDBDatabase> {
-  if (!dbReady) {
-    dbReady = (async () => {
-      db = await initDB();
-      await seedDemoData(db);
-      return db;
-    })();
+  if (!db) {
+    db = await initDB();
   }
-  return dbReady;
+  return db;
 }
 
 // ========== JOB OPERATIONS ==========
