@@ -197,6 +197,21 @@ const en = {
   'toast.analyzedSuccess': 'Photo analyzed successfully!',
   'toast.explainFailed': 'Failed: {msg}',
   'toast.duplicatePhotoWarning': 'This photo has already been uploaded for this job. Upload anyway?',
+
+  // Chat
+  'chat.title': 'AI Assistant',
+  'chat.placeholder': 'Ask about this job...',
+  'chat.send': 'Send',
+  'chat.clear': 'Clear',
+  'chat.thinking': 'Thinking...',
+  'chat.noApiKey': 'Add API key in Settings to use chat',
+  'chat.empty': 'Ask the AI about tasks, standards, or what to do next.',
+
+  // Shopping list
+  'shopping.title': 'Shopping',
+  'shopping.empty': 'No items in the shopping list.',
+  'shopping.askAI': 'Ask the AI to create a shopping list from your tasks.',
+  'shopping.bought': 'Bought',
 } as const;
 
 export type TranslationKey = keyof typeof en;

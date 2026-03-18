@@ -199,6 +199,21 @@ const sv: Translations = {
   'toast.analyzedSuccess': 'Foto analyserat!',
   'toast.explainFailed': 'Misslyckades: {msg}',
   'toast.duplicatePhotoWarning': 'Det här fotot har redan laddats upp för detta jobb. Ladda upp ändå?',
+
+  // Chat
+  'chat.title': 'AI-assistent',
+  'chat.placeholder': 'Fråga om detta jobb...',
+  'chat.send': 'Skicka',
+  'chat.clear': 'Rensa',
+  'chat.thinking': 'Tänker...',
+  'chat.noApiKey': 'Lägg till API-nyckel i Inställningar för att använda chatten',
+  'chat.empty': 'Fråga AI:n om uppgifter, standarder eller vad du ska göra härnäst.',
+
+  // Shopping list
+  'shopping.title': 'Inköp',
+  'shopping.empty': 'Ingen inköpslista ännu.',
+  'shopping.askAI': 'Be AI:n skapa en inköpslista från dina uppgifter.',
+  'shopping.bought': 'Köpt',
 };
 
 export default sv;

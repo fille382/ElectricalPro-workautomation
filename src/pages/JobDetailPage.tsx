@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { useJobs, useTasks, usePhotos, useSavedContacts } from '../hooks/useIndexedDB';
+import { useJobs, useTasks, usePhotos, useSavedContacts, useShoppingList } from '../hooks/useIndexedDB';
 import { saveContactsFromJob } from '../utils/db';
 import { useClaude } from '../hooks/useClaude';
 import { useTranslation } from '../contexts/I18nContext';
@@ -9,6 +9,8 @@ import JobForm from '../components/JobForm';
 import TaskForm from '../components/TaskForm';
 import CameraCapture from '../components/CameraCapture';
 import PhotoGallery from '../components/PhotoGallery';
+import JobChat from '../components/JobChat';
+import ShoppingList from '../components/ShoppingList';
 import type { Task } from '../types';
 import { computeImageHash } from '../utils/imageHash';
 
@@ -25,25 +27,31 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
   const { photos, addPhoto, updatePhotoExtraction, deletePhoto } = usePhotos(jobId || null);
   const { analyzePanel, explainTask } = useClaude(apiKey);
   const { savedContacts, refresh: refreshContacts } = useSavedContacts();
+  const { items: shoppingItems, addItem: addShoppingItem, updateItem: updateShoppingItem, deleteItem: deleteShoppingItem } = useShoppingList(jobId || null);
 
+  const [activeTab, setActiveTab] = useState<'tasks' | 'shopping'>('tasks');
   const [showEditJob, setShowEditJob] = useState(false);
   const [showAddTask, setShowAddTask] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
   const [analyzingPhotoIds, setAnalyzingPhotoIds] = useState<Set<string>>(new Set());
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [showCompleted, setShowCompleted] = useState(false);
-  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
+  const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [taskExplanations, setTaskExplanations] = useState<Record<string, { explanation: string | null; loading: boolean; subtaskIds?: string[] }>>({});
   const groupRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   const handleShowTasks = useCallback((photoId: string) => {
-    setCollapsedGroups((prev) => {
+    setExpandedGroups((prev) => {
       const next = new Set(prev);
-      next.delete(photoId);
+      if (next.has(photoId)) {
+        next.delete(photoId);
+      } else {
+        next.add(photoId);
+        requestAnimationFrame(() => {
+          groupRefs.current[photoId]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+      }
       return next;
-    });
-    requestAnimationFrame(() => {
-      groupRefs.current[photoId]?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     });
   }, []);
 
@@ -95,7 +103,7 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
   })();
 
   const toggleGroup = (key: string) => {
-    setCollapsedGroups((prev) => {
+    setExpandedGroups((prev) => {
       const next = new Set(prev);
       if (next.has(key)) next.delete(key);
       else next.add(key);
@@ -380,16 +388,43 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
         <div className="lg:col-span-2 space-y-6">
           <div>
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-xl font-bold text-blue-900 dark:text-gray-100">{t('job.tasks')}</h2>
-              <button onClick={() => setShowAddTask(true)} className="btn-primary text-sm flex items-center gap-2">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                {t('job.addTask')}
-              </button>
+              <div className="flex gap-1 bg-gray-200 dark:bg-gray-700 rounded-lg p-1">
+                <button
+                  onClick={() => setActiveTab('tasks')}
+                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${activeTab === 'tasks' ? 'bg-white dark:bg-gray-600 text-blue-900 dark:text-gray-100 shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'}`}
+                >
+                  {t('job.tasks')} ({topLevelTasks.length})
+                </button>
+                <button
+                  onClick={() => setActiveTab('shopping')}
+                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors flex items-center gap-1.5 ${activeTab === 'shopping' ? 'bg-white dark:bg-gray-600 text-blue-900 dark:text-gray-100 shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'}`}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 000-4z" />
+                  </svg>
+                  {t('shopping.title')} ({shoppingItems.length})
+                </button>
+              </div>
+              {activeTab === 'tasks' && (
+                <button onClick={() => setShowAddTask(true)} className="btn-primary text-sm flex items-center gap-2">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+                  </svg>
+                  {t('job.addTask')}
+                </button>
+              )}
             </div>
 
-            {activeTasks.length === 0 && completedTasks.length === 0 ? (
+            {activeTab === 'shopping' && (
+              <ShoppingList
+                items={shoppingItems}
+                onToggle={(id, checked) => updateShoppingItem(id, { checked })}
+                onDelete={deleteShoppingItem}
+                onUpdateQuantity={(id, quantity) => updateShoppingItem(id, { quantity })}
+              />
+            )}
+
+            {activeTab === 'tasks' && (activeTasks.length === 0 && completedTasks.length === 0 ? (
               <div className="card text-center py-8 text-gray-500 dark:text-gray-400">
                 <p>{t('job.noTasks')}</p>
               </div>
@@ -398,25 +433,24 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
                 {taskGroups.length > 0 && (
                   <div className="space-y-4 mb-6">
                     {taskGroups.map((group) => {
-                      const isCollapsed = collapsedGroups.has(group.key);
+                      const isExpanded = expandedGroups.has(group.key);
                       const doneInGroup = group.tasks.filter((tk) => tk.status === 'completed').length;
+                      const activeCount = group.tasks.length - doneInGroup;
 
                       return (
                         <div key={group.key} ref={(el) => { groupRefs.current[group.key] = el; }}>
-                          {taskGroups.length > 1 && (
-                            <button
-                              onClick={() => toggleGroup(group.key)}
-                              className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
-                            >
-                              <svg className={`w-4 h-4 transition-transform ${isCollapsed ? '' : 'rotate-90'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                              </svg>
-                              <span className="capitalize">{group.label}</span>
-                              <span className="text-gray-400 dark:text-gray-500 font-normal">({group.tasks.length - doneInGroup})</span>
-                            </button>
-                          )}
+                          <button
+                            onClick={() => toggleGroup(group.key)}
+                            className="flex items-center gap-2 text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                          >
+                            <svg className={`w-4 h-4 transition-transform ${isExpanded ? 'rotate-90' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                            </svg>
+                            <span className="capitalize">{group.label}</span>
+                            <span className="text-gray-400 dark:text-gray-500 font-normal">({activeCount})</span>
+                          </button>
 
-                          {!isCollapsed && (
+                          {isExpanded && (
                             <div className="space-y-2">
                               {group.tasks.map((task) => {
                                 const isExpanded = expandedTaskId === task.id;
@@ -537,7 +571,7 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
                   </div>
                 )}
               </>
-            )}
+            ))}
           </div>
         </div>
 
@@ -567,8 +601,8 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
 
       {/* Modals */}
       {showEditJob && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40 flex items-center justify-center p-4">
-          <div className="bg-white/95 dark:bg-gray-800/95 rounded-lg shadow-xl w-full max-w-md max-h-[90vh] flex flex-col">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40 flex items-center justify-center p-4" onClick={() => setShowEditJob(false)}>
+          <div className="bg-white/95 dark:bg-gray-800/95 rounded-lg shadow-xl w-full max-w-md max-h-[90vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
             <div className="flex-shrink-0 bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm border-b border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-between rounded-t-lg">
               <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">{t('job.editJob')}</h2>
               <button onClick={() => setShowEditJob(false)} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
@@ -603,8 +637,8 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
       )}
 
       {showAddTask && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40 flex items-center justify-center p-4">
-          <div className="bg-white/95 dark:bg-gray-800/95 rounded-lg shadow-xl w-full max-w-md">
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-40 flex items-center justify-center p-4" onClick={() => setShowAddTask(false)}>
+          <div className="bg-white/95 dark:bg-gray-800/95 rounded-lg shadow-xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
             <div className="sticky top-0 bg-white/95 dark:bg-gray-800/95 backdrop-blur-sm border-b border-gray-200 dark:border-gray-700 px-6 py-4 flex items-center justify-between">
               <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">{t('job.addTask')}</h2>
               <button onClick={() => setShowAddTask(false)} className="text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200">
@@ -633,6 +667,8 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
       )}
 
       {showCamera && <CameraCapture onCapture={handleCapturePhoto} onClose={() => setShowCamera(false)} />}
+
+      <JobChat jobId={job.id} apiKey={apiKey} job={job} tasks={tasks} photos={photos} onUpdateTask={updateTask} onCreateTask={createTask} onDeleteTask={deleteTask} onAddShoppingItem={addShoppingItem} onDeleteShoppingItem={deleteShoppingItem} shoppingItems={shoppingItems} />
     </div>
   );
 }

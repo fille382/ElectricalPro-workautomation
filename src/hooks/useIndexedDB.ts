@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import * as db from '../utils/db';
-import type { Job, Task, Photo, SavedContact } from '../types';
+import type { Job, Task, Photo, SavedContact, ChatMessage, ShoppingItem } from '../types';
 
 /**
  * Hook to manage jobs
@@ -245,4 +245,90 @@ export function useSavedContacts() {
     error,
     refresh: loadContacts,
   };
+}
+
+/**
+ * Hook to manage chat messages for a specific job
+ */
+export function useChat(jobId: string | null) {
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const loadMessages = async () => {
+    if (!jobId) {
+      setMessages([]);
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const result = await db.getChatMessages(jobId);
+      setMessages(result);
+    } catch (err) {
+      console.error('Failed to load chat messages:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadMessages();
+  }, [jobId]);
+
+  const addMessage = async (msg: Omit<ChatMessage, 'id' | 'created_at'>) => {
+    const newMsg = await db.addChatMessage(msg);
+    setMessages((prev) => [...prev, newMsg]);
+    return newMsg;
+  };
+
+  const clearMessages = async () => {
+    if (!jobId) return;
+    await db.clearChatMessages(jobId);
+    setMessages([]);
+  };
+
+  return { messages, loading, addMessage, clearMessages, refresh: loadMessages };
+}
+
+/**
+ * Hook to manage shopping list for a specific job
+ */
+export function useShoppingList(jobId: string | null) {
+  const [items, setItems] = useState<ShoppingItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const loadItems = async () => {
+    if (!jobId) { setItems([]); setLoading(false); return; }
+    try {
+      setLoading(true);
+      const result = await db.getShoppingItems(jobId);
+      setItems(result);
+    } catch (err) {
+      console.error('Failed to load shopping list:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { loadItems(); }, [jobId]);
+
+  const addItem = async (item: Omit<ShoppingItem, 'id' | 'created_at'>) => {
+    const newItem = await db.addShoppingItem(item);
+    setItems((prev) => [...prev, newItem]);
+    return newItem;
+  };
+
+  const updateItem = async (id: string, updates: Partial<ShoppingItem>) => {
+    const updated = await db.updateShoppingItem(id, updates);
+    setItems((prev) => prev.map((i) => (i.id === id ? updated : i)));
+    return updated;
+  };
+
+  const deleteItem = async (id: string) => {
+    await db.deleteShoppingItem(id);
+    setItems((prev) => prev.filter((i) => i.id !== id));
+  };
+
+  return { items, loading, addItem, updateItem, deleteItem, refresh: loadItems };
 }

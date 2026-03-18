@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { HashRouter as Router, Routes, Route } from 'react-router-dom';
 import { Toaster, toast } from 'react-hot-toast';
 import * as db from './utils/db';
+import { seedKnowledgeBase } from './utils/knowledgeBase';
 import { I18nProvider } from './contexts/I18nContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { DebugLogProvider } from './contexts/DebugLogContext';
@@ -29,6 +30,8 @@ function App() {
         }
         setInitialLanguage(settings.language || 'auto');
         setInitialTheme(settings.theme || 'system');
+        // Seed knowledge base (no-op if already seeded)
+        seedKnowledgeBase().catch((err) => console.warn('[KB] Seed failed:', err));
       } catch (error) {
         console.error('Failed to initialize app:', error);
         toast.error('Failed to initialize database');

@@ -297,6 +297,224 @@ Provide clear, practical, and standards-compliant advice.`;
   }
 }
 
+/**
+ * Chat with AI about a job — multi-turn conversation with full job context
+ */
+export interface ChatContext {
+  job: { name: string; description?: string; address?: string };
+  tasks: { id: string; title: string; status: string; source_photo_id?: string }[];
+  photoSummaries: { id: string; component_type?: string; condition?: string; recommendations?: string[] }[];
+  shoppingItems?: { name: string; e_number?: string; quantity: number; unit: string; checked: boolean }[];
+}
+
+export interface ChatAction {
+  type: 'update_task' | 'create_task' | 'delete_task' | 'add_shopping_item' | 'delete_shopping_item' | 'clear_shopping_list';
+  task_id?: string;
+  status?: 'pending' | 'in-progress' | 'completed';
+  title?: string;
+  parent_task_id?: string;
+  // Shopping item fields
+  name?: string;
+  e_number?: string;
+  article_number?: string;
+  manufacturer?: string;
+  quantity?: number;
+  unit?: string;
+}
+
+export interface ChatResponse {
+  message: string;
+  actions: ChatAction[];
+}
+
+export async function chatWithJob(
+  userMessage: string,
+  conversationHistory: { role: 'user' | 'assistant'; content: string }[],
+  context: ChatContext,
+  apiKey: string,
+  language: string = 'en',
+  knowledgeContext?: string,
+  catalogContext?: string
+): Promise<ChatResponse> {
+  if (!apiKey) throw new Error('Claude API key is required');
+
+  const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
+
+  const taskSummary = context.tasks.length > 0
+    ? context.tasks.map((t) => `- [${t.status.toUpperCase()}] (id: ${t.id}) ${t.title}`).join('\n')
+    : 'No tasks yet.';
+
+  const photoSummary = context.photoSummaries.length > 0
+    ? context.photoSummaries.map((p, i) => `${i + 1}. ${p.component_type || 'Photo'} — condition: ${p.condition || 'unknown'}${p.recommendations?.length ? `, recommendations: ${p.recommendations.join('; ')}` : ''}`).join('\n')
+    : 'No photos analyzed yet.';
+
+  const kbSection = knowledgeContext
+    ? `\n\nGENERAL REFERENCE (Swedish electrical standards — use ONLY if the user asks a related question, do NOT apply this to the job unless relevant):\n${knowledgeContext}\n`
+    : '';
+
+  const catalogSection = catalogContext
+    ? `\n\nPRODUCT CATALOG (real E-numbers from e-nummersok.se — use when user asks about materials, products, or shopping lists):\n${catalogContext}\n\nWhen suggesting products, include the E-nummer and article number so the user can order directly from their grossist.\n`
+    : '';
+
+  const systemPrompt = `You are an expert Swedish electrician assistant embedded in a work management app. You have DIRECT ACCESS to manage tasks and a shopping list.
+
+JOB: ${context.job.name}
+${context.job.description ? `Description: ${context.job.description}` : ''}
+${context.job.address ? `Address: ${context.job.address}` : ''}
+
+CURRENT TASKS:
+${taskSummary}
+
+PHOTO ANALYSES:
+${photoSummary}
+
+SHOPPING LIST:
+${context.shoppingItems && context.shoppingItems.length > 0
+    ? context.shoppingItems.map((s) => `- ${s.checked ? '[BOUGHT]' : '[  ]'} ${s.name}${s.e_number ? ` (E-nr: ${s.e_number})` : ''} x${s.quantity} ${s.unit}`).join('\n')
+    : 'Empty.'}${kbSection}${catalogSection}
+
+YOU MUST ALWAYS respond with valid JSON: {"message": "text", "actions": []}
+
+AVAILABLE ACTIONS:
+
+1. UPDATE task: {"type": "update_task", "task_id": "ID", "status": "completed", "title": "optional new title"}
+2. CREATE task: {"type": "create_task", "title": "Task description"}
+   Sub-task: {"type": "create_task", "title": "Sub-step", "parent_task_id": "parent_ID"}
+3. DELETE task: {"type": "delete_task", "task_id": "ID"}
+4. ADD to shopping list: {"type": "add_shopping_item", "name": "Product name", "e_number": "XX XXX XX", "article_number": "art-nr", "manufacturer": "brand", "quantity": 10, "unit": "st"}
+   IMPORTANT: ALWAYS include e_number and article_number from the PRODUCT CATALOG when available. The e_number is critical for the shopping list.
+5. DELETE shopping item by name: {"type": "delete_shopping_item", "name": "Product name"}
+6. CLEAR entire shopping list: {"type": "clear_shopping_list"}
+
+Valid task statuses: "pending", "in-progress", "completed"
+Valid shopping units: "st", "m", "paket", "rulle", "burk"
+
+WHEN TO USE ACTIONS:
+- User says task is done → update_task with status "completed"
+- User says task text is wrong → update_task with new title
+- User asks to remove irrelevant tasks → delete_task
+- User asks to break down/develop a task → create multiple sub-tasks with parent_task_id
+- User asks to add new work items → create_task
+- User asks for materials/shopping list → add_shopping_item (one per product, use REAL E-numbers from the catalog when available)
+- User asks "vad behöver jag" or "skapa inköpslista" → analyze tasks and create shopping items with real products
+- User asks to remove items from shopping list → delete_shopping_item with matching name
+- User asks to clear/empty shopping list → clear_shopping_list
+- User asks general questions → empty actions []
+
+You can use MULTIPLE actions at once. When creating a shopping list, add ALL relevant items in one response.
+
+RULES:
+- ALWAYS output valid JSON
+- Use EXACT task IDs from the list
+- Keep message concise — used on phone on-site
+- You are also a general electrical expert — answer any electrical questions
+- CRITICAL: ONLY reference tasks, photos, and conditions that ACTUALLY exist in the data above. NEVER invent or assume issues that are not in the CURRENT TASKS or PHOTO ANALYSES sections.
+- When adding shopping items, prefer products from the PRODUCT CATALOG with real E-numbers. If no catalog match, still add the item but without e_number.
+${language === 'sv' ? '- Write "message" in Swedish (svenska)' : ''}`;
+
+  // Only send last 10 messages for context, and wrap assistant messages
+  // so the AI sees them as the "message" field, not raw JSON
+  const recentHistory = conversationHistory.slice(-10);
+  const messages = [
+    ...recentHistory.map((m) => ({
+      role: m.role as 'user' | 'assistant',
+      content: m.role === 'assistant'
+        ? `{"message": ${JSON.stringify(m.content)}, "actions": []}`
+        : m.content,
+    })),
+    { role: 'user' as const, content: userMessage },
+    // Prefill to force JSON output
+    { role: 'assistant' as const, content: '{' },
+  ];
+
+  try {
+    const timeoutPromise = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('API call timed out after 30 seconds')), 30000)
+    );
+
+    const response = await Promise.race([
+      client.messages.create({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1024,
+        system: systemPrompt,
+        messages,
+      }),
+      timeoutPromise,
+    ]) as any;
+
+    const textContent = response.content.find((block: any) => block.type === 'text');
+    if (!textContent || textContent.type !== 'text') throw new Error('No text response from Claude');
+
+    // Parse structured response — prefill sent '{', so prepend it
+    const raw = '{' + textContent.text;
+
+    // Try multiple parsing strategies
+    // Strategy 1: Direct JSON parse of entire response
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed.message !== undefined) {
+        return {
+          message: parsed.message,
+          actions: Array.isArray(parsed.actions) ? parsed.actions : [],
+        };
+      }
+    } catch { /* try next strategy */ }
+
+    // Strategy 2: Find the outermost valid JSON with "message" key
+    try {
+      // Find "message" and "actions" positions to extract the JSON structure
+      const msgIdx = raw.indexOf('"message"');
+      if (msgIdx >= 0) {
+        // Find the opening brace before "message"
+        let start = raw.lastIndexOf('{', msgIdx);
+        if (start >= 0) {
+          // Try parsing from each '{' working outward
+          let depth = 0;
+          for (let i = start; i < raw.length; i++) {
+            if (raw[i] === '{') depth++;
+            else if (raw[i] === '}') {
+              depth--;
+              if (depth === 0) {
+                try {
+                  const parsed = JSON.parse(raw.substring(start, i + 1));
+                  if (parsed.message !== undefined) {
+                    return {
+                      message: parsed.message,
+                      actions: Array.isArray(parsed.actions) ? parsed.actions : [],
+                    };
+                  }
+                } catch { /* try wider match */ }
+              }
+            }
+          }
+        }
+      }
+    } catch { /* try next strategy */ }
+
+    // Strategy 3: Regex fallback
+    try {
+      const jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+        return {
+          message: parsed.message || textContent.text,
+          actions: Array.isArray(parsed.actions) ? parsed.actions : [],
+        };
+      }
+    } catch { /* fall through */ }
+
+    // Final fallback: strip any JSON artifacts and return as plain message
+    const cleaned = textContent.text
+      .replace(/^["\s]*message["\s]*:["\s]*/i, '')
+      .replace(/["\s]*,\s*"actions"\s*:\s*\[[\s\S]*$/i, '')
+      .replace(/^["']|["']$/g, '');
+    return { message: cleaned || textContent.text, actions: [] };
+  } catch (error) {
+    if (error instanceof Error) throw new Error(`Chat failed: ${error.message}`);
+    throw new Error(`Chat failed: ${String(error)}`);
+  }
+}
+
 export interface TaskExplanation {
   explanation: string;
   subtasks: string[];

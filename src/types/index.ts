@@ -72,6 +72,43 @@ export interface ElectricalPanelInfo {
   raw_analysis?: string;
 }
 
+// Knowledge base entry — cached AI answers for reuse
+export interface KnowledgeEntry {
+  id: string;
+  question: string;
+  keywords: string[];
+  answer: string;
+  category: string;  // e.g. 'standards', 'wiring', 'safety', 'tools', 'general'
+  source: 'seed' | 'ai';  // pre-seeded or learned from AI chat
+  useCount: number;
+  created_at: number;
+  updated_at: number;
+}
+
+// Shopping list item per job
+export interface ShoppingItem {
+  id: string;
+  job_id: string;
+  name: string;
+  e_number?: string;       // E-nummer from catalog
+  article_number?: string; // Manufacturer article number
+  manufacturer?: string;
+  quantity: number;
+  unit: string;            // 'st', 'm', 'paket', etc.
+  checked: boolean;        // bought/collected
+  parent_item_id?: string; // If set, this is an accessory/sub-item
+  created_at: number;
+}
+
+// Chat message for per-job AI conversation
+export interface ChatMessage {
+  id: string;
+  job_id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  created_at: number;
+}
+
 // API Key storage
 export interface AppSettings {
   claude_api_key?: string;
