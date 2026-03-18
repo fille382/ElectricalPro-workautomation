@@ -4,6 +4,7 @@ const DB_NAME = 'electrician_app';
 const DB_VERSION = 2;
 
 let db: IDBDatabase | null = null;
+let dbReady: Promise<IDBDatabase> | null = null;
 
 /**
  * Initialize the IndexedDB database
@@ -109,14 +110,17 @@ async function seedDemoData(database: IDBDatabase): Promise<void> {
 }
 
 /**
- * Get the database instance
+ * Get the database instance (singleton — safe for concurrent calls)
  */
 async function getDB(): Promise<IDBDatabase> {
-  if (!db) {
-    db = await initDB();
-    await seedDemoData(db);
+  if (!dbReady) {
+    dbReady = (async () => {
+      db = await initDB();
+      await seedDemoData(db);
+      return db;
+    })();
   }
-  return db;
+  return dbReady;
 }
 
 // ========== JOB OPERATIONS ==========
