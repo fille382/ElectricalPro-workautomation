@@ -53,7 +53,7 @@ export default function CameraCapture({ onCapture, onClose, loading }: CameraCap
 
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1080 } },
+        video: { facingMode: 'environment' },
       });
       pendingStream.current = stream;
       setIsCameraActive(true);
