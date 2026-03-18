@@ -67,7 +67,7 @@ async function seedDemoData(database: IDBDatabase): Promise<void> {
     const tx = database.transaction(['jobs', 'tasks'], 'readwrite');
     const jobStore = tx.objectStore('jobs');
 
-    // Check if demo job already exists
+    // Only seed if demo job doesn't already exist
     const checkRequest = jobStore.get(DEMO_JOB_ID);
     checkRequest.onsuccess = () => {
       if (checkRequest.result) {
@@ -75,14 +75,7 @@ async function seedDemoData(database: IDBDatabase): Promise<void> {
         return;
       }
 
-      // Check if user has any jobs at all
-      const countRequest = jobStore.count();
-      countRequest.onsuccess = () => {
-        if (countRequest.result > 0) {
-          resolve(); // User has their own jobs, don't add demo
-          return;
-        }
-
+      {
         const now = Date.now();
         const demoJob: Job = {
           id: DEMO_JOB_ID,
@@ -119,7 +112,7 @@ async function seedDemoData(database: IDBDatabase): Promise<void> {
           resolve();
         };
         tx.onerror = () => resolve(); // Don't block on seed errors
-      };
+      }
     };
   });
 }
