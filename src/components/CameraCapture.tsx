@@ -100,6 +100,39 @@ export default function CameraCapture({ onCapture, onClose, loading }: CameraCap
     }
   };
 
+  const saveFullResToDevice = async (dataUrl: string) => {
+    try {
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+      const filename = `ElectricalPro_${timestamp}.jpg`;
+
+      // Convert data URL to blob for sharing
+      const res = await fetch(dataUrl);
+      const blob = await res.blob();
+      const file = new File([blob], filename, { type: 'image/jpeg' });
+
+      // Use Web Share API on mobile — saves directly to camera roll / photos
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file] });
+        console.log('[Camera] Full-res photo shared/saved via Share API');
+        toast.success(t('toast.fullResSaved'));
+      } else {
+        // Fallback for desktop: trigger download
+        const link = document.createElement('a');
+        link.href = dataUrl;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        console.log('[Camera] Full-res photo downloaded');
+        toast.success(t('toast.fullResSaved'));
+      }
+    } catch (err: any) {
+      // User cancelled the share sheet — not an error
+      if (err?.name === 'AbortError') return;
+      console.warn('[Camera] Could not save full-res to device:', err);
+    }
+  };
+
   const confirmCapture = async () => {
     if (!preview) return;
 
@@ -112,7 +145,11 @@ export default function CameraCapture({ onCapture, onClose, loading }: CameraCap
         img.onerror = () => reject(new Error('Image load failed'));
       });
 
-      const maxWidth = 1200;
+      // Save full-resolution version to device (non-blocking)
+      saveFullResToDevice(preview);
+
+      // Compress for the app — keep resolution high for AI, just reduce file size
+      const maxWidth = 1920;
       let width = img.width;
       let height = img.height;
       if (width > maxWidth) {
@@ -129,7 +166,7 @@ export default function CameraCapture({ onCapture, onClose, loading }: CameraCap
         canvas.toBlob((b) => resolve(b!), 'image/jpeg', 0.75);
       });
 
-      console.log(`[Camera] Compressed to ${compressed.size} bytes (${width}x${height})`);
+      console.log(`[Camera] Compressed for app: ${compressed.size} bytes (${width}x${height})`);
       onCapture(compressed);
     } catch (err) {
       console.error('[Camera] Compression failed, using original:', err);
