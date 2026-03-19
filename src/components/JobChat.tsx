@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useChat } from '../hooks/useIndexedDB';
 import { chatWithJob, type ChatContext } from '../utils/claude';
 import { searchKnowledge, learnFromChat, markUsed } from '../utils/knowledgeBase';
@@ -416,7 +416,7 @@ export default function JobChat({ jobId, apiKey, job, tasks, photos, onUpdateTas
       let content = bulletMatch ? bulletMatch[1] : numberMatch ? numberMatch[2] : trimmed;
 
       // Bold **text**
-      const parts: (string | JSX.Element)[] = [];
+      const parts: (string | React.JSX.Element)[] = [];
       let lastIdx = 0;
       const boldRegex = /\*\*(.+?)\*\*/g;
       let match;
