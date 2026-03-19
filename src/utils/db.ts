@@ -1,7 +1,7 @@
-import type { Job, Task, Photo, AppSettings, SavedContact, JobContact } from '../types';
+import type { Job, Task, Photo, AppSettings, SavedContact, JobContact, ChatMessage, KnowledgeEntry, ShoppingItem } from '../types';
 
 const DB_NAME = 'electrician_app';
-const DB_VERSION = 2;
+const DB_VERSION = 5;
 
 let db: IDBDatabase | null = null;
 
@@ -52,6 +52,24 @@ export async function initDB(): Promise<IDBDatabase> {
         const contactStore = database.createObjectStore('saved_contacts', { keyPath: 'id' });
         contactStore.createIndex('name', 'name', { unique: false });
         contactStore.createIndex('role', 'role', { unique: false });
+      }
+
+      // Create chat messages store
+      if (!database.objectStoreNames.contains('chat_messages')) {
+        const chatStore = database.createObjectStore('chat_messages', { keyPath: 'id' });
+        chatStore.createIndex('job_id', 'job_id', { unique: false });
+      }
+
+      // Create knowledge base store
+      if (!database.objectStoreNames.contains('knowledge_base')) {
+        const kbStore = database.createObjectStore('knowledge_base', { keyPath: 'id' });
+        kbStore.createIndex('category', 'category', { unique: false });
+      }
+
+      // Create shopping list store
+      if (!database.objectStoreNames.contains('shopping_list')) {
+        const shopStore = database.createObjectStore('shopping_list', { keyPath: 'id' });
+        shopStore.createIndex('job_id', 'job_id', { unique: false });
       }
     };
   });
@@ -478,6 +496,172 @@ export async function deleteSavedContact(id: string): Promise<void> {
     const store = transaction.objectStore('saved_contacts');
     const request = store.delete(id);
 
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve();
+  });
+}
+
+// ========== CHAT MESSAGE OPERATIONS ==========
+
+export async function getChatMessages(jobId: string): Promise<ChatMessage[]> {
+  const database = await getDB();
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(['chat_messages'], 'readonly');
+    const store = transaction.objectStore('chat_messages');
+    const index = store.index('job_id');
+    const request = index.getAll(jobId);
+
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      const messages = request.result.sort((a: ChatMessage, b: ChatMessage) => a.created_at - b.created_at);
+      resolve(messages);
+    };
+  });
+}
+
+export async function addChatMessage(message: Omit<ChatMessage, 'id' | 'created_at'>): Promise<ChatMessage> {
+  const database = await getDB();
+  const id = `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+  const newMessage: ChatMessage = {
+    ...message,
+    id,
+    created_at: Date.now(),
+  };
+
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(['chat_messages'], 'readwrite');
+    const store = transaction.objectStore('chat_messages');
+    const request = store.add(newMessage);
+
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(newMessage);
+  });
+}
+
+export async function clearChatMessages(jobId: string): Promise<void> {
+  const messages = await getChatMessages(jobId);
+  const database = await getDB();
+  const transaction = database.transaction(['chat_messages'], 'readwrite');
+  const store = transaction.objectStore('chat_messages');
+
+  for (const msg of messages) {
+    store.delete(msg.id);
+  }
+
+  return new Promise((resolve, reject) => {
+    transaction.oncomplete = () => resolve();
+    transaction.onerror = () => reject(transaction.error);
+  });
+}
+
+// ========== SHOPPING LIST OPERATIONS ==========
+
+export async function getShoppingItems(jobId: string): Promise<ShoppingItem[]> {
+  const database = await getDB();
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(['shopping_list'], 'readonly');
+    const store = transaction.objectStore('shopping_list');
+    const index = store.index('job_id');
+    const request = index.getAll(jobId);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result);
+  });
+}
+
+export async function addShoppingItem(item: Omit<ShoppingItem, 'id' | 'created_at'>): Promise<ShoppingItem> {
+  const database = await getDB();
+  const id = `shop_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  const newItem: ShoppingItem = { ...item, id, created_at: Date.now() };
+
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(['shopping_list'], 'readwrite');
+    const store = transaction.objectStore('shopping_list');
+    const request = store.add(newItem);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(newItem);
+  });
+}
+
+export async function updateShoppingItem(id: string, updates: Partial<ShoppingItem>): Promise<ShoppingItem> {
+  const database = await getDB();
+
+  const existing = await new Promise<ShoppingItem>((resolve, reject) => {
+    const tx = database.transaction(['shopping_list'], 'readonly');
+    const request = tx.objectStore('shopping_list').get(id);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result);
+  });
+
+  if (!existing) throw new Error('Shopping item not found');
+  const updated = { ...existing, ...updates, id, created_at: existing.created_at };
+
+  return new Promise((resolve, reject) => {
+    const tx = database.transaction(['shopping_list'], 'readwrite');
+    const request = tx.objectStore('shopping_list').put(updated);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(updated);
+  });
+}
+
+export async function deleteShoppingItem(id: string): Promise<void> {
+  const database = await getDB();
+  return new Promise((resolve, reject) => {
+    const tx = database.transaction(['shopping_list'], 'readwrite');
+    const request = tx.objectStore('shopping_list').delete(id);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve();
+  });
+}
+
+// ========== KNOWLEDGE BASE OPERATIONS ==========
+
+export async function getAllKnowledge(): Promise<KnowledgeEntry[]> {
+  const database = await getDB();
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(['knowledge_base'], 'readonly');
+    const store = transaction.objectStore('knowledge_base');
+    const request = store.getAll();
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result);
+  });
+}
+
+export async function addKnowledge(entry: Omit<KnowledgeEntry, 'id' | 'created_at' | 'updated_at' | 'useCount'>): Promise<KnowledgeEntry> {
+  const database = await getDB();
+  const id = `kb_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  const now = Date.now();
+
+  const newEntry: KnowledgeEntry = { ...entry, id, useCount: 0, created_at: now, updated_at: now };
+
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(['knowledge_base'], 'readwrite');
+    const store = transaction.objectStore('knowledge_base');
+    const request = store.add(newEntry);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(newEntry);
+  });
+}
+
+export async function updateKnowledge(id: string, updates: Partial<KnowledgeEntry>): Promise<void> {
+  const database = await getDB();
+
+  const existing = await new Promise<KnowledgeEntry>((resolve, reject) => {
+    const transaction = database.transaction(['knowledge_base'], 'readonly');
+    const store = transaction.objectStore('knowledge_base');
+    const request = store.get(id);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result);
+  });
+
+  if (!existing) return;
+
+  const updated = { ...existing, ...updates, id, created_at: existing.created_at, updated_at: Date.now() };
+
+  return new Promise((resolve, reject) => {
+    const transaction = database.transaction(['knowledge_base'], 'readwrite');
+    const store = transaction.objectStore('knowledge_base');
+    const request = store.put(updated);
     request.onerror = () => reject(request.error);
     request.onsuccess = () => resolve();
   });

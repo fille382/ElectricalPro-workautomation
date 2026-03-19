@@ -5,6 +5,15 @@ import { VitePWA } from 'vite-plugin-pwa'
 // https://vite.dev/config/
 export default defineConfig({
   base: '/ElectricalPro-workautomation/',
+  server: {
+    proxy: {
+      '/api/enummer': {
+        target: 'https://www.e-nummersok.se',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/enummer/, ''),
+      },
+    },
+  },
   plugins: [
     react(),
     VitePWA({
@@ -40,6 +49,7 @@ export default defineConfig({
         ],
       },
       workbox: {
+        maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5MB for large product catalog
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
         skipWaiting: true,
         clientsClaim: true,
