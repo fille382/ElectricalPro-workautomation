@@ -353,7 +353,7 @@ export async function chatWithJob(
     : '';
 
   const catalogSection = catalogContext
-    ? `\n\nPRODUCT CATALOG (real E-numbers from e-nummersok.se — use when user asks about materials, products, or shopping lists):\n${catalogContext}\n\nWhen suggesting products, include the E-nummer and article number so the user can order directly from their grossist.\n`
+    ? `\n\nPRODUCT CATALOG (real E-numbers from e-nummersok.se — ALWAYS use these when adding shopping items):\n${catalogContext}\n\nCRITICAL: When adding shopping items, you MUST copy the exact E-nr and Art.nr from the catalog above into the e_number and article_number fields. Every add_shopping_item action MUST have e_number if a matching product exists in the catalog. The user NEEDS E-numbers to order from their grossist.\n`
     : '';
 
   const systemPrompt = `You are an expert Swedish electrician assistant embedded in a work management app. You have DIRECT ACCESS to manage tasks and a shopping list.
@@ -382,7 +382,7 @@ AVAILABLE ACTIONS:
    Sub-task: {"type": "create_task", "title": "Sub-step", "parent_task_id": "parent_ID"}
 3. DELETE task: {"type": "delete_task", "task_id": "ID"}
 4. ADD to shopping list: {"type": "add_shopping_item", "name": "Product name", "e_number": "XX XXX XX", "article_number": "art-nr", "manufacturer": "brand", "quantity": 10, "unit": "st"}
-   IMPORTANT: ALWAYS include e_number and article_number from the PRODUCT CATALOG when available. The e_number is critical for the shopping list.
+   MANDATORY: Copy e_number and article_number EXACTLY from the PRODUCT CATALOG section above. Match the user's request to catalog products and use their E-nr values. Without E-numbers the shopping list is useless.
 5. DELETE shopping item by name: {"type": "delete_shopping_item", "name": "Product name"}
 6. CLEAR entire shopping list: {"type": "clear_shopping_list"}
 
@@ -429,13 +429,13 @@ ${language === 'sv' ? '- Write "message" in Swedish (svenska)' : ''}`;
 
   try {
     const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('API call timed out after 30 seconds')), 30000)
+      setTimeout(() => reject(new Error('API call timed out after 45 seconds')), 45000)
     );
 
     const response = await Promise.race([
       client.messages.create({
         model: 'claude-sonnet-4-20250514',
-        max_tokens: 1024,
+        max_tokens: 2048,
         system: systemPrompt,
         messages,
       }),

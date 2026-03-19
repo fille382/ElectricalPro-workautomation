@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useMemo } from 'react';
 import { useChat } from '../hooks/useIndexedDB';
 import { chatWithJob, type ChatContext } from '../utils/claude';
 import { searchKnowledge, learnFromChat, markUsed } from '../utils/knowledgeBase';
-import { searchCatalog, searchCatalogForTasks, formatCatalogResults, getInstallationTemplates, formatTemplateForAI, getAccessories } from '../utils/catalog';
+import { searchCatalog, searchCatalogMulti, searchCatalogForTasks, formatCatalogResults, getInstallationTemplates, formatTemplateForAI, getAccessories } from '../utils/catalog';
 import { useTranslation } from '../contexts/I18nContext';
 import type { Job, Task, Photo, ShoppingItem } from '../types';
 
@@ -80,8 +80,10 @@ export default function JobChat({ jobId, apiKey, job, tasks, photos, onUpdateTas
       for (const entry of kbResults) markUsed(entry.id).catch(() => {});
 
       // Search product catalog live from e-nummersok.se
-      const isMaterialQuery = /material|inköp|handla|köp|e-nummer|lista|behöver/i.test(text);
-      let catalogResults = await searchCatalog(text, 8);
+      const isMaterialQuery = /material|inköp|handla|köp|e-nummer|lista|behöver|produkt|data|uttag|kabel|keystone|patch/i.test(text);
+      let catalogResults = isMaterialQuery
+        ? await searchCatalogMulti(text, 5)
+        : await searchCatalog(text, 8);
       if (isMaterialQuery && tasks.length > 0) {
         const taskResults = await searchCatalogForTasks(
           tasks.filter(tk => tk.status !== 'completed' && !tk.parent_task_id).map(tk => tk.title),
@@ -138,11 +140,32 @@ export default function JobChat({ jobId, apiKey, job, tasks, photos, onUpdateTas
             let artNum = action.article_number;
             let mfr = action.manufacturer;
             if (!eNum) {
-              const matches = await searchCatalog(action.name, 5);
-              if (matches.length > 0) {
-                eNum = matches[0].e;
-                artNum = artNum || matches[0].a;
-                mfr = mfr || matches[0].m;
+              // Strategy 1: Match against already-fetched catalog results (no API call)
+              const nameLower = action.name.toLowerCase();
+              const localMatch = catalogResults.find(p =>
+                p.n.toLowerCase().includes(nameLower) || nameLower.includes(p.n.toLowerCase()) ||
+                nameLower.split(' ').some(w => w.length > 3 && p.n.toLowerCase().includes(w))
+              );
+              if (localMatch) {
+                eNum = localMatch.e;
+                artNum = artNum || localMatch.a;
+                mfr = mfr || localMatch.m;
+                console.log(`[Shop] Enriched "${action.name}" from local cache: E-nr ${eNum}`);
+              } else {
+                // Strategy 2: New API search
+                let matches = await searchCatalog(action.name, 3);
+                if (matches.length === 0 && action.name.includes(' ')) {
+                  const words = action.name.split(' ').filter(w => w.length > 2).slice(0, 3);
+                  matches = await searchCatalog(words.join(' '), 3);
+                }
+                if (matches.length > 0) {
+                  eNum = matches[0].e;
+                  artNum = artNum || matches[0].a;
+                  mfr = mfr || matches[0].m;
+                  console.log(`[Shop] Enriched "${action.name}" from API: E-nr ${eNum}`);
+                } else {
+                  console.warn(`[Shop] No E-number found for "${action.name}"`);
+                }
               }
             }
             const parentItem = await onAddShoppingItem({
@@ -252,8 +275,10 @@ export default function JobChat({ jobId, apiKey, job, tasks, photos, onUpdateTas
         : undefined;
       for (const entry of kbResults) markUsed(entry.id).catch(() => {});
 
-      const isMaterialQ = /material|inköp|handla|köp|e-nummer|lista|behöver/i.test(text);
-      let catalogResults2 = await searchCatalog(text, 8);
+      const isMaterialQ = /material|inköp|handla|köp|e-nummer|lista|behöver|produkt|data|uttag|kabel|keystone|patch/i.test(text);
+      let catalogResults2 = isMaterialQ
+        ? await searchCatalogMulti(text, 5)
+        : await searchCatalog(text, 8);
       if (isMaterialQ && tasks.length > 0) {
         const taskResults = await searchCatalogForTasks(
           tasks.filter(tk => tk.status !== 'completed' && !tk.parent_task_id).map(tk => tk.title), 12
@@ -285,7 +310,23 @@ export default function JobChat({ jobId, apiKey, job, tasks, photos, onUpdateTas
             await onDeleteTask(action.task_id); deleted++;
           } else if (action.type === 'add_shopping_item' && action.name && onAddShoppingItem) {
             let eNum2 = action.e_number, artNum2 = action.article_number, mfr2 = action.manufacturer;
-            if (!eNum2) { const m = await searchCatalog(action.name, 1); if (m.length > 0) { eNum2 = m[0].e; artNum2 = artNum2 || m[0].a; mfr2 = mfr2 || m[0].m; } }
+            if (!eNum2) {
+              const nameLower2 = action.name.toLowerCase();
+              const localMatch2 = catalogResults2.find(p =>
+                p.n.toLowerCase().includes(nameLower2) || nameLower2.includes(p.n.toLowerCase()) ||
+                nameLower2.split(' ').some(w => w.length > 3 && p.n.toLowerCase().includes(w))
+              );
+              if (localMatch2) {
+                eNum2 = localMatch2.e; artNum2 = artNum2 || localMatch2.a; mfr2 = mfr2 || localMatch2.m;
+              } else {
+                let m = await searchCatalog(action.name, 3);
+                if (m.length === 0 && action.name.includes(' ')) {
+                  const words = action.name.split(' ').filter(w => w.length > 2).slice(0, 3);
+                  m = await searchCatalog(words.join(' '), 3);
+                }
+                if (m.length > 0) { eNum2 = m[0].e; artNum2 = artNum2 || m[0].a; mfr2 = mfr2 || m[0].m; }
+              }
+            }
             const parentItem2 = await onAddShoppingItem({ job_id: jobId, name: action.name, e_number: eNum2, article_number: artNum2, manufacturer: mfr2, quantity: action.quantity || 1, unit: action.unit || 'st', checked: false });
             shopped++;
             const accs2 = await getAccessories(action.name);

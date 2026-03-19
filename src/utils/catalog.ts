@@ -17,6 +17,18 @@ const searchCache = new Map<string, { results: CatalogProduct[]; ts: number }>()
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 /**
+ * Get the API URL for e-nummersok.se, handling CORS:
+ * - Dev: Vite proxy at /api/enummer
+ * - Production: CORS proxy via corsproxy.io
+ */
+function getApiUrl(): string {
+  if (import.meta.env.DEV) {
+    return '/api/enummer/ApiSearch/Search/';
+  }
+  return 'https://corsproxy.io/?url=' + encodeURIComponent('https://www.e-nummersok.se/ApiSearch/Search/');
+}
+
+/**
  * Live search e-nummersok.se API. Returns only active products.
  */
 export async function searchCatalog(query: string, limit = 10): Promise<CatalogProduct[]> {
@@ -27,7 +39,7 @@ export async function searchCatalog(query: string, limit = 10): Promise<CatalogP
   if (cached && Date.now() - cached.ts < CACHE_TTL) return cached.results;
 
   try {
-    const response = await fetch('https://www.e-nummersok.se/ApiSearch/Search/', {
+    const response = await fetch(getApiUrl(), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -81,6 +93,53 @@ export async function searchCatalogForTasks(taskTitles: string[], limit = 15): P
   }
 
   return results.slice(0, limit);
+}
+
+/**
+ * Extract individual product search terms from a user message.
+ * Splits on commas, numbers with units, and common Swedish connectors.
+ */
+export function extractProductTerms(message: string): string[] {
+  // Remove quantity/unit patterns like "1st", "10m", "8st" and common filler
+  const cleaned = message
+    .replace(/\d+\s*(st|m|paket|rulle|burk)\b/gi, ',')
+    .replace(/\b(ge mig|en|på|av|dom|dem|dessa|samt|och|med|för|till|ska|ha|behöver|inköpslista|materiallista|handla|köpa|köp|endast|bara)\b/gi, ' ')
+    .replace(/[.!?]/g, ',');
+
+  // Split on commas and filter
+  const terms = cleaned
+    .split(/[,;]+/)
+    .map(t => t.trim())
+    .filter(t => t.length >= 3 && !/^\d+$/.test(t));
+
+  return [...new Set(terms)];
+}
+
+/**
+ * Search catalog with multiple individual product terms extracted from user message.
+ * Much better than searching the entire message as one query.
+ */
+export async function searchCatalogMulti(message: string, perTermLimit = 5): Promise<CatalogProduct[]> {
+  const terms = extractProductTerms(message);
+  if (terms.length === 0) {
+    // Fallback: search the raw message
+    return searchCatalog(message, 10);
+  }
+
+  const seen = new Set<string>();
+  const results: CatalogProduct[] = [];
+
+  for (const term of terms.slice(0, 8)) { // Max 8 searches
+    const matches = await searchCatalog(term, perTermLimit);
+    for (const m of matches) {
+      if (!seen.has(m.e)) {
+        results.push(m);
+        seen.add(m.e);
+      }
+    }
+  }
+
+  return results;
 }
 
 /**
