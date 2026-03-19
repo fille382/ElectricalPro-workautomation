@@ -199,6 +199,7 @@ const sv: Translations = {
   'toast.analyzedSuccess': 'Foto analyserat!',
   'toast.explainFailed': 'Misslyckades: {msg}',
   'toast.duplicatePhotoWarning': 'Det här fotot har redan laddats upp för detta jobb. Ladda upp ändå?',
+  'toast.fullResSaved': 'Fullupplöst foto sparat på enheten!',
 
   // Chat
   'chat.title': 'AI-assistent',

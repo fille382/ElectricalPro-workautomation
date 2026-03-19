@@ -197,6 +197,7 @@ const en = {
   'toast.analyzedSuccess': 'Photo analyzed successfully!',
   'toast.explainFailed': 'Failed: {msg}',
   'toast.duplicatePhotoWarning': 'This photo has already been uploaded for this job. Upload anyway?',
+  'toast.fullResSaved': 'Full-res photo saved to device!',
 
   // Chat
   'chat.title': 'AI Assistant',
