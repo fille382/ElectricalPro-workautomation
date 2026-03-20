@@ -34,7 +34,11 @@ function getApiUrl(): string {
 export async function searchCatalog(query: string, limit = 10): Promise<CatalogProduct[]> {
   if (!query || query.trim().length < 2) return [];
 
-  const cacheKey = query.trim().toLowerCase() + ':' + limit;
+  // Strip "E" or "E-nr" prefix from E-number searches (catalog wants digits only)
+  let cleanQuery = query.trim();
+  cleanQuery = cleanQuery.replace(/^E-?n?r?:?\s*/i, '');
+
+  const cacheKey = cleanQuery.toLowerCase() + ':' + limit;
   const cached = searchCache.get(cacheKey);
   if (cached && Date.now() - cached.ts < CACHE_TTL) return cached.results;
 
@@ -43,7 +47,7 @@ export async function searchCatalog(query: string, limit = 10): Promise<CatalogP
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        Query: query.trim(),
+        Query: cleanQuery,
         Page: 1,
         PageSize: limit,
         OnlyActive: false, // API flag doesn't work, we filter client-side
@@ -55,7 +59,7 @@ export async function searchCatalog(query: string, limit = 10): Promise<CatalogP
     const data = await response.json();
     const rows = data?.Data?.SearchResultRows || [];
 
-    const results: CatalogProduct[] = rows
+    let results: CatalogProduct[] = rows
       .filter((r: any) => r.IsActive === true) // Only active products
       .map((r: any) => ({
         e: r.RSKNummer,
@@ -65,6 +69,32 @@ export async function searchCatalog(query: string, limit = 10): Promise<CatalogP
         m: (r.ManufacturerAlias || '').replace(/ AB$| Sverige AB$| Sweden AB$/, ''),
         c: r.ProductGroupName2 || '',
       }));
+
+    // Handle "direct hit" — API returns a URL instead of search results for exact E-number matches
+    if (results.length === 0 && data?.Data?.ProductDirectHitUrl) {
+      const directUrl = data.Data.ProductDirectHitUrl as string;
+      // Extract product info from the URL path: /lista/.../product-name-ENUMBER-ID
+      const urlParts = directUrl.split('/');
+      const slug = urlParts[urlParts.length - 1] || '';
+      // E-number is embedded in URL without spaces, extract it
+      const eNumMatch = slug.match(/(\d{7})-\d+$/);
+      const eNum = eNumMatch ? eNumMatch[1].replace(/(\d{2})(\d{3})(\d{2})/, '$1 $2 $3') : cleanQuery.replace(/\s/g, '').replace(/(\d{2})(\d{3})(\d{2})/, '$1 $2 $3');
+      // Product name from slug (before the numbers)
+      const nameSlug = slug.replace(/-\d+-\d+$/, '').replace(/-/g, ' ');
+      const productName = nameSlug.charAt(0).toUpperCase() + nameSlug.slice(1);
+      // Manufacturer from category path
+      const manufacturer = urlParts.length > 4 ? urlParts[urlParts.length - 2]?.replace('samtliga-fabrikat', '').replace(/-/g, ' ').trim() : '';
+
+      console.log(`[Catalog] Direct hit for "${cleanQuery}": ${productName} (E-nr: ${eNum})`);
+      results = [{
+        e: eNum,
+        n: productName,
+        d: `Direct hit from e-nummersok.se`,
+        a: cleanQuery.replace(/\s/g, ''),
+        m: manufacturer || 'Unknown',
+        c: urlParts[2] || '',
+      }];
+    }
 
     searchCache.set(cacheKey, { results, ts: Date.now() });
     return results;
@@ -98,12 +128,48 @@ export async function searchCatalogForTasks(taskTitles: string[], limit = 15): P
 /**
  * Extract individual product search terms from a user message.
  * Splits on commas, numbers with units, and common Swedish connectors.
+ * Also generates variations (with/without dimensions, brand combos).
  */
 export function extractProductTerms(message: string): string[] {
+  // Known brands and product types for smart extraction
+  const brands = ['hager', 'schneider', 'abb', 'exxact', 'wago', 'obo', 'elko', 'gira', 'legrand', 'ahlsell', 'gigamedia'];
+  const productTypes = ['kanal', 'kanalplast', 'kabel', 'uttag', 'dosa', 'central', 'brytare', 'dimmer', 'armatur', 'rör', 'flexslang', 'keystone', 'patch', 'patchkabel', 'datauttag', 'vägguttag', 'strömställare', 'jordfelsbrytare', 'dvärgbrytare', 'led', 'downlight', 'täckram', 'hörnbox', 'stuts', 'klämma', 'koppling'];
+
+  const lower = message.toLowerCase();
+
+  // Extract brand + product type combinations
+  const smartTerms: string[] = [];
+  const foundBrands = brands.filter(b => lower.includes(b));
+  const foundProducts = productTypes.filter(p => lower.includes(p));
+
+  // Create brand+product combos (e.g. "hager kanal")
+  for (const brand of foundBrands) {
+    for (const product of foundProducts) {
+      smartTerms.push(`${brand} ${product}`);
+    }
+    // Also search just the brand alone
+    if (foundProducts.length === 0) smartTerms.push(brand);
+  }
+  // Also search product types alone
+  for (const product of foundProducts) {
+    if (foundBrands.length === 0) smartTerms.push(product);
+  }
+
+  // Extract dimensions like "40x60" and combine with products
+  const dimMatch = lower.match(/(\d+x\d+)/i);
+  if (dimMatch) {
+    for (const product of foundProducts) {
+      smartTerms.push(`${product} ${dimMatch[1]}`);
+    }
+    for (const brand of foundBrands) {
+      smartTerms.push(`${brand} ${dimMatch[1]}`);
+    }
+  }
+
   // Remove quantity/unit patterns like "1st", "10m", "8st" and common filler
   const cleaned = message
     .replace(/\d+\s*(st|m|paket|rulle|burk)\b/gi, ',')
-    .replace(/\b(ge mig|en|på|av|dom|dem|dessa|samt|och|med|för|till|ska|ha|behöver|inköpslista|materiallista|handla|köpa|köp|endast|bara)\b/gi, ' ')
+    .replace(/\b(ge mig|en|på|av|dom|dem|dessa|samt|och|med|för|till|ska|ha|behöver|inköpslista|materiallista|handla|köpa|köp|endast|bara|lista|vilka|vilken|vilke|som|har|finns|visa|visa mig|vet du|kan du|alla|alla typer|typer|sortiment)\b/gi, ' ')
     .replace(/[.!?]/g, ',');
 
   // Split on commas and filter
@@ -112,7 +178,21 @@ export function extractProductTerms(message: string): string[] {
     .map(t => t.trim())
     .filter(t => t.length >= 3 && !/^\d+$/.test(t));
 
-  return [...new Set(terms)];
+  // Combine smart terms with cleaned terms, smart first (higher priority)
+  const all = [...smartTerms, ...terms];
+
+  // Generate search variations for better catalog hits
+  const variations: string[] = [];
+  for (const term of all) {
+    variations.push(term);
+    // If term has dimensions like "40x60", also search without them
+    const withoutDims = term.replace(/\d+x\d+\s*/gi, '').trim();
+    if (withoutDims.length >= 3 && withoutDims !== term) {
+      variations.push(withoutDims);
+    }
+  }
+
+  return [...new Set(variations)];
 }
 
 /**
@@ -121,6 +201,7 @@ export function extractProductTerms(message: string): string[] {
  */
 export async function searchCatalogMulti(message: string, perTermLimit = 5): Promise<CatalogProduct[]> {
   const terms = extractProductTerms(message);
+  console.log('[Catalog] Extracted search terms:', terms);
   if (terms.length === 0) {
     // Fallback: search the raw message
     return searchCatalog(message, 10);

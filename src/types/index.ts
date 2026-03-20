@@ -93,6 +93,7 @@ export interface ShoppingItem {
   e_number?: string;       // E-nummer from catalog
   article_number?: string; // Manufacturer article number
   manufacturer?: string;
+  category?: string;       // Product category for grouping (e.g. 'Kanaler', 'Uttag', 'Strömställare')
   quantity: number;
   unit: string;            // 'st', 'm', 'paket', etc.
   checked: boolean;        // bought/collected

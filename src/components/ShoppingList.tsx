@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import type { ShoppingItem } from '../types';
 import { useTranslation } from '../contexts/I18nContext';
 
@@ -10,13 +11,11 @@ interface ShoppingListProps {
 
 export default function ShoppingList({ items, onToggle, onDelete, onUpdateQuantity }: ShoppingListProps) {
   const { t } = useTranslation();
+  const [collapsedCategories, setCollapsedCategories] = useState<Set<string>>(new Set());
 
-  // Split into parent items (no parent_item_id) and sub-items
+  // Split into parent items and sub-items
   const parentItems = items.filter((i) => !i.parent_item_id);
   const getSubItems = (parentId: string) => items.filter((i) => i.parent_item_id === parentId);
-
-  const uncheckedParents = parentItems.filter((i) => !i.checked);
-  const checkedParents = parentItems.filter((i) => i.checked);
 
   if (items.length === 0) {
     return (
@@ -29,6 +28,32 @@ export default function ShoppingList({ items, onToggle, onDelete, onUpdateQuanti
       </div>
     );
   }
+
+  const toggleCategory = (cat: string) => {
+    setCollapsedCategories(prev => {
+      const next = new Set(prev);
+      if (next.has(cat)) next.delete(cat);
+      else next.add(cat);
+      return next;
+    });
+  };
+
+  // Group parent items by category
+  const uncheckedParents = parentItems.filter((i) => !i.checked);
+  const checkedParents = parentItems.filter((i) => i.checked);
+
+  const groupByCategory = (items: ShoppingItem[]) => {
+    const groups = new Map<string, ShoppingItem[]>();
+    for (const item of items) {
+      const cat = item.category || 'Övrigt';
+      if (!groups.has(cat)) groups.set(cat, []);
+      groups.get(cat)!.push(item);
+    }
+    return groups;
+  };
+
+  const uncheckedGroups = groupByCategory(uncheckedParents);
+  const hasCategories = uncheckedGroups.size > 1 || (uncheckedGroups.size === 1 && !uncheckedGroups.has('Övrigt'));
 
   const renderItem = (item: ShoppingItem, isSub = false) => (
     <div
@@ -124,15 +149,57 @@ export default function ShoppingList({ items, onToggle, onDelete, onUpdateQuanti
     );
   };
 
+  const renderCategoryGroup = (category: string, categoryItems: ShoppingItem[]) => {
+    const isCollapsed = collapsedCategories.has(category);
+    const checkedCount = categoryItems.filter(i => i.checked).length;
+
+    return (
+      <div key={category}>
+        <button
+          onClick={() => toggleCategory(category)}
+          className="w-full flex items-center gap-2 py-2 px-1 text-left group"
+        >
+          <svg
+            className={`w-4 h-4 text-gray-400 transition-transform ${isCollapsed ? '' : 'rotate-90'}`}
+            fill="currentColor" viewBox="0 0 20 20"
+          >
+            <path fillRule="evenodd" d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z" clipRule="evenodd" />
+          </svg>
+          <span className="text-xs font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 group-hover:text-gray-700 dark:group-hover:text-gray-300 transition-colors">
+            {category}
+          </span>
+          <span className="text-xs text-gray-400 dark:text-gray-500">
+            {checkedCount > 0 ? `${checkedCount}/${categoryItems.length}` : categoryItems.length}
+          </span>
+        </button>
+        {!isCollapsed && (
+          <div className="space-y-1.5 ml-1">
+            {categoryItems.map(renderParentWithSubs)}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-2">
-      {uncheckedParents.map(renderParentWithSubs)}
+      {hasCategories ? (
+        // Grouped by category
+        Array.from(uncheckedGroups.entries()).map(([cat, catItems]) =>
+          renderCategoryGroup(cat, catItems)
+        )
+      ) : (
+        // Flat list (no categories or single "Övrigt")
+        uncheckedParents.map(renderParentWithSubs)
+      )}
       {checkedParents.length > 0 && (
         <>
-          <div className="text-xs text-gray-500 dark:text-gray-400 font-medium uppercase tracking-wide pt-2">
+          <div className="text-xs text-gray-500 dark:text-gray-400 font-medium uppercase tracking-wide pt-2 border-t border-gray-200 dark:border-gray-700 mt-3">
             {t('shopping.bought')} ({checkedParents.length})
           </div>
-          {checkedParents.map(renderParentWithSubs)}
+          <div className="space-y-1.5 opacity-50">
+            {checkedParents.map(renderParentWithSubs)}
+          </div>
         </>
       )}
     </div>

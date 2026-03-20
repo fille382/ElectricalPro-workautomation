@@ -668,7 +668,7 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
 
       {showCamera && <CameraCapture onCapture={handleCapturePhoto} onClose={() => setShowCamera(false)} />}
 
-      <JobChat jobId={job.id} apiKey={apiKey} job={job} tasks={tasks} photos={photos} onUpdateTask={updateTask} onCreateTask={createTask} onDeleteTask={deleteTask} onAddShoppingItem={addShoppingItem} onDeleteShoppingItem={deleteShoppingItem} shoppingItems={shoppingItems} />
+      <JobChat jobId={job.id} apiKey={apiKey} job={job} tasks={tasks} photos={photos} onUpdateTask={updateTask} onCreateTask={createTask} onDeleteTask={deleteTask} onAddShoppingItem={addShoppingItem} onUpdateShoppingItem={updateShoppingItem} onDeleteShoppingItem={deleteShoppingItem} shoppingItems={shoppingItems} />
     </div>
   );
 }
