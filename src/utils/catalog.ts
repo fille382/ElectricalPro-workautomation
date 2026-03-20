@@ -98,6 +98,7 @@ export async function searchCatalogForTasks(taskTitles: string[], limit = 15): P
 /**
  * Extract individual product search terms from a user message.
  * Splits on commas, numbers with units, and common Swedish connectors.
+ * Also generates variations (with/without dimensions, brand combos).
  */
 export function extractProductTerms(message: string): string[] {
   // Remove quantity/unit patterns like "1st", "10m", "8st" and common filler
@@ -112,7 +113,26 @@ export function extractProductTerms(message: string): string[] {
     .map(t => t.trim())
     .filter(t => t.length >= 3 && !/^\d+$/.test(t));
 
-  return [...new Set(terms)];
+  const unique = [...new Set(terms)];
+
+  // Generate search variations for better catalog hits
+  const variations: string[] = [];
+  for (const term of unique) {
+    variations.push(term);
+    // If term has dimensions like "40x60", also search without them
+    const withoutDims = term.replace(/\d+x\d+\s*/gi, '').trim();
+    if (withoutDims.length >= 3 && withoutDims !== term) {
+      variations.push(withoutDims);
+    }
+    // If term has brand + product, also search just the product type
+    const dimMatch = term.match(/(\d+x\d+)/i);
+    if (dimMatch) {
+      // Also search "kanalplast 40x60" style
+      variations.push(term.replace(/^[a-zåäö]+\s+/i, ''));
+    }
+  }
+
+  return [...new Set(variations)];
 }
 
 /**

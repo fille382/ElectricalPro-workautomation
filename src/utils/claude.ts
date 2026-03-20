@@ -353,10 +353,12 @@ export async function chatWithJob(
     : '';
 
   const catalogSection = catalogContext
-    ? `\n\nPRODUCT CATALOG (real E-numbers from e-nummersok.se — ALWAYS use these when adding shopping items):\n${catalogContext}\n\nCRITICAL: When adding shopping items, you MUST copy the exact E-nr and Art.nr from the catalog above into the e_number and article_number fields. Every add_shopping_item action MUST have e_number if a matching product exists in the catalog. The user NEEDS E-numbers to order from their grossist.\n`
-    : '';
+    ? `\n\nPRODUCT CATALOG (LIVE search results from e-nummersok.se based on the user's message — these are REAL, CURRENT products):\n${catalogContext}\n\nCRITICAL: When adding shopping items, you MUST copy the exact E-nr and Art.nr from the catalog above into the e_number and article_number fields. Every add_shopping_item action MUST have e_number if a matching product exists in the catalog. The user NEEDS E-numbers to order from their grossist.\n`
+    : `\n\nNOTE: No catalog results were found for this query, but products DO exist. If the user asks for materials, still create shopping items with descriptive names — the E-numbers can be looked up later.\n`;
 
   const systemPrompt = `You are an expert Swedish electrician assistant embedded in a work management app. You have DIRECT ACCESS to manage tasks and a shopping list.
+
+IMPORTANT: You have access to a LIVE product catalog from e-nummersok.se (Sweden's official E-nummer database with 915,000+ products). Products matching the user's query are automatically searched and provided below in the PRODUCT CATALOG section. NEVER tell the user you can't find products or that you don't have catalog access — you DO. If the catalog section is empty for a specific product, still add it to the shopping list by name and suggest the user search e-nummersok.se directly.
 
 JOB: ${context.job.name}
 ${context.job.description ? `Description: ${context.job.description}` : ''}

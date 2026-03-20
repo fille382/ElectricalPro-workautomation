@@ -80,9 +80,9 @@ export default function JobChat({ jobId, apiKey, job, tasks, photos, onUpdateTas
       for (const entry of kbResults) markUsed(entry.id).catch(() => {});
 
       // Search product catalog live from e-nummersok.se
-      const isMaterialQuery = /material|inköp|handla|köp|e-nummer|lista|behöver|produkt|data|uttag|kabel|keystone|patch/i.test(text);
+      const isMaterialQuery = /material|inköp|handla|köp|e-nummer|lista|behöver|produkt|data|uttag|kabel|keystone|patch|kanal|rör|dosa|central|brytare|dimmer|armatur|led|wago|hager|schneider|abb|exxact|flexslang/i.test(text);
       let catalogResults = isMaterialQuery
-        ? await searchCatalogMulti(text, 5)
+        ? await searchCatalogMulti(text, 8)
         : await searchCatalog(text, 8);
       if (isMaterialQuery && tasks.length > 0) {
         const taskResults = await searchCatalogForTasks(
