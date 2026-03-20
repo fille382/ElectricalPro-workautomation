@@ -2,6 +2,33 @@ import Anthropic from '@anthropic-ai/sdk';
 import type { ElectricalPanelInfo } from '../types';
 
 /**
+ * Track and log token usage across all API calls
+ */
+const tokenTracker = {
+  session: { input: 0, output: 0, cached: 0, calls: 0 },
+  log(label: string, usage: any) {
+    if (!usage) return;
+    const input = usage.input_tokens || 0;
+    const output = usage.output_tokens || 0;
+    const cached = usage.cache_read_input_tokens || 0;
+    this.session.input += input;
+    this.session.output += output;
+    this.session.cached += cached;
+    this.session.calls++;
+    const cost = ((input * 3 + output * 15 + cached * 0.3) / 1_000_000).toFixed(4);
+    const sessionCost = ((this.session.input * 3 + this.session.output * 15 + this.session.cached * 0.3) / 1_000_000).toFixed(4);
+    console.log(
+      `%c[Tokens] ${label}%c in: ${input.toLocaleString()}${cached > 0 ? ` (${cached.toLocaleString()} cached)` : ''} | out: ${output.toLocaleString()} | ~$${cost}`,
+      'color: #4fc3f7; font-weight: bold', 'color: #aaa'
+    );
+    console.log(
+      `%c[Session Total]%c ${this.session.calls} calls | in: ${this.session.input.toLocaleString()} | out: ${this.session.output.toLocaleString()} | ~$${sessionCost}`,
+      'color: #81c784; font-weight: bold', 'color: #888'
+    );
+  }
+};
+
+/**
  * Convert Blob to base64 string
  */
 function blobToBase64(blob: Blob): Promise<string> {
@@ -212,6 +239,7 @@ ${language === 'sv' ? 'IMPORTANT: Write your ENTIRE response in Swedish (svenska
 
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
     console.log(`[AI] Response received in ${elapsed}s`);
+    tokenTracker.log('analyzePanel', response.usage);
 
     // Extract the text response
     const textContent = response.content.find((block: any) => block.type === 'text');
@@ -272,7 +300,7 @@ Provide clear, practical, and standards-compliant advice.`;
 
   try {
     const response = await client.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-haiku-4-20250514',
       max_tokens: 1024,
       system: systemPrompt,
       messages: [
@@ -282,6 +310,7 @@ Provide clear, practical, and standards-compliant advice.`;
         },
       ],
     });
+    tokenTracker.log('explainTask', response.usage);
 
     const textContent = response.content.find((block) => block.type === 'text');
     if (!textContent || textContent.type !== 'text') {
@@ -318,6 +347,7 @@ export interface ChatAction {
   e_number?: string;
   article_number?: string;
   manufacturer?: string;
+  category?: string;
   quantity?: number;
   unit?: string;
 }
@@ -325,6 +355,7 @@ export interface ChatAction {
 export interface ChatResponse {
   message: string;
   actions: ChatAction[];
+  options?: string[];  // Clickable option buttons shown to the user
 }
 
 export async function chatWithJob(
@@ -334,9 +365,12 @@ export async function chatWithJob(
   apiKey: string,
   language: string = 'en',
   knowledgeContext?: string,
-  catalogContext?: string
+  _catalogContext?: string // kept for backward compat, no longer used — AI searches itself
 ): Promise<ChatResponse> {
   if (!apiKey) throw new Error('Claude API key is required');
+
+  // Import searchCatalog dynamically to avoid circular deps
+  const { searchCatalog, formatCatalogResults } = await import('./catalog');
 
   const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
 
@@ -352,13 +386,36 @@ export async function chatWithJob(
     ? `\n\nGENERAL REFERENCE (Swedish electrical standards — use ONLY if the user asks a related question, do NOT apply this to the job unless relevant):\n${knowledgeContext}\n`
     : '';
 
-  const catalogSection = catalogContext
-    ? `\n\nPRODUCT CATALOG (LIVE search results from e-nummersok.se based on the user's message — these are REAL, CURRENT products):\n${catalogContext}\n\nCRITICAL: When adding shopping items, you MUST copy the exact E-nr and Art.nr from the catalog above into the e_number and article_number fields. Every add_shopping_item action MUST have e_number if a matching product exists in the catalog. The user NEEDS E-numbers to order from their grossist.\n`
-    : `\n\nNOTE: No catalog results were found for this query, but products DO exist. If the user asks for materials, still create shopping items with descriptive names — the E-numbers can be looked up later.\n`;
-
   const systemPrompt = `You are an expert Swedish electrician assistant embedded in a work management app. You have DIRECT ACCESS to manage tasks and a shopping list.
 
-IMPORTANT: You have access to a LIVE product catalog from e-nummersok.se (Sweden's official E-nummer database with 915,000+ products). Products matching the user's query are automatically searched and provided below in the PRODUCT CATALOG section. NEVER tell the user you can't find products or that you don't have catalog access — you DO. If the catalog section is empty for a specific product, still add it to the shopping list by name and suggest the user search e-nummersok.se directly.
+You have a tool called "search_catalog" that searches e-nummersok.se (Sweden's official E-nummer database with 915,000+ active products) in REAL-TIME. Use it whenever the user asks about products, materials, or shopping lists. Be smart about search terms — use product names, brands, dimensions, types in Swedish.
+
+SEARCH STRATEGY:
+- Keep searches efficient: max 3-5 tool calls per response. Don't over-search.
+- If a specific brand doesn't have what's needed, TRY OTHER BRANDS immediately (Hager, Schneider, ABB, OBO, etc.) — don't get stuck on one.
+- If no exact match exists, present the CLOSEST alternatives you found and ask the user which one they want. Don't keep searching endlessly.
+- Vary search terms: try generic terms ("matarkanal 40x60"), brand-specific ("Hager LFE 40x60"), and dimension-based ("kanal 40x60 vit").
+- When the user says a brand, treat it as a preference, not a hard requirement. If that brand lacks the product, suggest alternatives from other brands.
+- IMPORTANT: The user speaks casually but you MUST search with professional Swedish electrical terms:
+  - "brytare"/"strömbrytare" → search "strömställare"
+  - "trapp" (in switch context) → "strömställare trapp" (NOT "trappströmställare" — catalog uses separate words)
+  - "kors" → "strömställare kors"
+  - "uttag" → "vägguttag jordat"
+  - "dimmer" → "dimmer LED" or "vridimmer"
+  - "dosa" → "apparatdosa" or "kopplingsdosa"
+  - CABLES: "EXQ", "EKLK", "RK", "FK", "PKL" are standard cable type names — search them DIRECTLY: "EXQ 3G1,5", "EKLK 3G1.5"
+    Common cables: EXQ (standard installation), EKLK (screened), RK (single conductor), FK (flexible), PKL (patch cable)
+  - Always combine with brand when given: "ELKO strömställare trapp", "Schneider strömställare trapp"
+  - CATALOG NAMES ARE ABBREVIATED: "STRÖMST TR./1P SNABB INF" = strömställare trapp. So search with SHORT terms too.
+  - Use COMMA for decimals in dimensions: "3G1,5" NOT "3G1.5" — the catalog uses Swedish format
+  - If first search returns 0 results, try:
+    1. Shorter terms: "ELKO strömställare" instead of full description
+    2. Just the product code/type: "EXQ 3G1,5", "ELKO trapp"
+    3. Article number or E-number if the user provides one — search E-numbers as DIGITS ONLY without "E" prefix: "74 780 19" NOT "E74 780 19"
+    4. Synonyms: brytare→strömställare, uttag→vägguttag, kabel→installationskabel
+    5. Without brand: user says "exq 3g1.5 oskärmad" → search "EXQ 3G1,5"
+  - Search "komplett" or "blister" for products with frame included
+  - NEVER search a single casual word alone — always add product context from the conversation
 
 JOB: ${context.job.name}
 ${context.job.description ? `Description: ${context.job.description}` : ''}
@@ -373,9 +430,23 @@ ${photoSummary}
 SHOPPING LIST:
 ${context.shoppingItems && context.shoppingItems.length > 0
     ? context.shoppingItems.map((s) => `- ${s.checked ? '[BOUGHT]' : '[  ]'} ${s.name}${s.e_number ? ` (E-nr: ${s.e_number})` : ''} x${s.quantity} ${s.unit}`).join('\n')
-    : 'Empty.'}${kbSection}${catalogSection}
+    : 'Empty.'}${kbSection}
 
-YOU MUST ALWAYS respond with valid JSON: {"message": "text", "actions": []}
+AFTER you have all the product data you need (from tool calls), respond with valid JSON:
+{"message": "text", "actions": [...], "options": ["Option 1", "Option 2"]}
+
+OPTIONS FIELD (interactive buttons shown to the user):
+Use "options" to present clickable choices. The user taps a button instead of typing. Great for mobile users.
+- Use options when presenting product alternatives, brand choices, series selection, or any decision point
+- Keep option text short and clear (product name + key info)
+- Max 6 options per response
+- Options are sent as user messages when tapped
+- Guide the user step by step: first brand → then series → then specific product
+- Example flow: ["Schneider", "Hager", "ABB"] → ["Exxact", "Renova", "Robust"] → ["1-vägs jordat", "2-vägs jordat", "USB-uttag"]
+- If the user's choice is clear and doesn't need narrowing down, skip options and just add the item directly
+- Omit "options" or set to [] when no choices are needed
+- NEVER offer options for things the user can do in the UI already (changing quantity, checking off items). The shopping list has +/- buttons for quantity. Only offer options for PRODUCT SELECTION decisions.
+- After adding an item, suggest RELATED products the user might also need (e.g. after adding uttag: "Behöver du ram?", "Lägg till apparatdosa?") — not quantity changes
 
 AVAILABLE ACTIONS:
 
@@ -383,8 +454,11 @@ AVAILABLE ACTIONS:
 2. CREATE task: {"type": "create_task", "title": "Task description"}
    Sub-task: {"type": "create_task", "title": "Sub-step", "parent_task_id": "parent_ID"}
 3. DELETE task: {"type": "delete_task", "task_id": "ID"}
-4. ADD to shopping list: {"type": "add_shopping_item", "name": "Product name", "e_number": "XX XXX XX", "article_number": "art-nr", "manufacturer": "brand", "quantity": 10, "unit": "st"}
-   MANDATORY: Copy e_number and article_number EXACTLY from the PRODUCT CATALOG section above. Match the user's request to catalog products and use their E-nr values. Without E-numbers the shopping list is useless.
+4. ADD to shopping list: {"type": "add_shopping_item", "name": "Product name", "e_number": "XX XXX XX", "article_number": "art-nr", "manufacturer": "brand", "category": "Category", "quantity": 10, "unit": "st"}
+   CRITICAL: Always use the search_catalog tool FIRST to find real E-numbers before adding shopping items. Copy e_number and article_number EXACTLY from search results. The user NEEDS E-numbers to order from their grossist.
+   CATEGORY: Always set category to group products. Use these standard categories:
+   "Kanaler & rör", "Uttag & strömställare", "Dosor & kapslingar", "Kabel", "Central & säkringar", "Data & nätverk", "Belysning", "Tillbehör", "Övrigt"
+   DEDUPLICATION: If the same product (same E-number) already exists in the shopping list, do NOT add it again. Instead tell the user to update the quantity on the existing item.
 5. DELETE shopping item by name: {"type": "delete_shopping_item", "name": "Product name"}
 6. CLEAR entire shopping list: {"type": "clear_shopping_list"}
 
@@ -397,27 +471,49 @@ WHEN TO USE ACTIONS:
 - User asks to remove irrelevant tasks → delete_task
 - User asks to break down/develop a task → create multiple sub-tasks with parent_task_id
 - User asks to add new work items → create_task
-- User asks for materials/shopping list → add_shopping_item (one per product, use REAL E-numbers from the catalog when available)
-- User asks "vad behöver jag" or "skapa inköpslista" → analyze tasks and create shopping items with real products
+- User asks for materials/shopping list → FIRST search_catalog for each product type, THEN add_shopping_item with real E-numbers
+- User asks "vad behöver jag" or "skapa inköpslista" → analyze tasks, search catalog, create shopping items with real products
 - User asks to remove items from shopping list → delete_shopping_item with matching name
 - User asks to clear/empty shopping list → clear_shopping_list
+- User asks about products/brands/specifications → search_catalog to find real data, then answer
 - User asks general questions → empty actions []
 
 You can use MULTIPLE actions at once. When creating a shopping list, add ALL relevant items in one response.
 
 RULES:
-- ALWAYS output valid JSON
+- ALWAYS output valid JSON as your final response (after any tool calls)
 - Use EXACT task IDs from the list
 - Keep message concise — used on phone on-site
 - You are also a general electrical expert — answer any electrical questions
 - CRITICAL: ONLY reference tasks, photos, and conditions that ACTUALLY exist in the data above. NEVER invent or assume issues that are not in the CURRENT TASKS or PHOTO ANALYSES sections.
-- When adding shopping items, prefer products from the PRODUCT CATALOG with real E-numbers. If no catalog match, still add the item but without e_number.
+- When adding shopping items, ALWAYS search the catalog first. If no catalog match exists, still add the item but without e_number.
 ${language === 'sv' ? '- Write "message" in Swedish (svenska)' : ''}`;
 
-  // Only send last 10 messages for context, and wrap assistant messages
-  // so the AI sees them as the "message" field, not raw JSON
+  // Tool definition for catalog search
+  const tools = [
+    {
+      name: 'search_catalog',
+      description: 'Search the Swedish E-nummer product catalog (e-nummersok.se) for electrical products. Returns real products with E-numbers, article numbers, and manufacturers. Use specific Swedish product terms for best results. Call multiple times with different queries to find all needed products. When searching by E-number, use DIGITS ONLY: "74 780 19" NOT "E74 780 19".',
+      input_schema: {
+        type: 'object' as const,
+        properties: {
+          query: {
+            type: 'string',
+            description: 'Search query — use specific Swedish product names, brands, dimensions. Examples: "Hager kanalplast 40x60", "Exxact vägguttag", "patchkabel cat6 1m", "ABB jordfelsbrytare 30mA"',
+          },
+          limit: {
+            type: 'number',
+            description: 'Max number of results (default 8)',
+          },
+        },
+        required: ['query'],
+      },
+    },
+  ];
+
+  // Build conversation messages — limit to last 10 messages to save tokens
   const recentHistory = conversationHistory.slice(-10);
-  const messages = [
+  const messages: any[] = [
     ...recentHistory.map((m) => ({
       role: m.role as 'user' | 'assistant',
       content: m.role === 'assistant'
@@ -425,96 +521,142 @@ ${language === 'sv' ? '- Write "message" in Swedish (svenska)' : ''}`;
         : m.content,
     })),
     { role: 'user' as const, content: userMessage },
-    // Prefill to force JSON output
-    { role: 'assistant' as const, content: '{' },
+  ];
+
+  // System prompt with cache control for prompt caching (saves ~90% on repeated calls)
+  const systemMessages = [
+    {
+      type: 'text' as const,
+      text: systemPrompt,
+      cache_control: { type: 'ephemeral' as const },
+    },
   ];
 
   try {
-    const timeoutPromise = new Promise((_, reject) =>
-      setTimeout(() => reject(new Error('API call timed out after 45 seconds')), 45000)
-    );
+    // Tool-use loop: let AI search catalog as many times as it needs
+    let maxIterations = 8; // Safety limit — AI should use max 3-5 searches per response
+    while (maxIterations-- > 0) {
+      const timeoutPromise = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('API call timed out after 60 seconds')), 60000)
+      );
 
-    const response = await Promise.race([
-      client.messages.create({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 2048,
-        system: systemPrompt,
-        messages,
-      }),
-      timeoutPromise,
-    ]) as any;
+      const response = await Promise.race([
+        client.messages.create({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 2048,
+          system: systemMessages,
+          messages,
+          tools,
+        }),
+        timeoutPromise,
+      ]) as any;
 
-    const textContent = response.content.find((block: any) => block.type === 'text');
-    if (!textContent || textContent.type !== 'text') throw new Error('No text response from Claude');
+      tokenTracker.log('chatWithJob', response.usage);
 
-    // Parse structured response — prefill sent '{', so prepend it
-    const raw = '{' + textContent.text;
+      // Check if AI wants to use a tool
+      const toolUses = response.content.filter((b: any) => b.type === 'tool_use');
 
-    // Try multiple parsing strategies
-    // Strategy 1: Direct JSON parse of entire response
-    try {
-      const parsed = JSON.parse(raw);
-      if (parsed.message !== undefined) {
-        return {
-          message: parsed.message,
-          actions: Array.isArray(parsed.actions) ? parsed.actions : [],
-        };
+      if (toolUses.length === 0 || response.stop_reason === 'end_turn') {
+        // No tool calls — parse the final text response
+        const textContent = response.content.find((b: any) => b.type === 'text');
+        if (!textContent || textContent.type !== 'text') throw new Error('No text response from Claude');
+
+        return parseJsonResponse(textContent.text);
       }
-    } catch { /* try next strategy */ }
 
-    // Strategy 2: Find the outermost valid JSON with "message" key
-    try {
-      // Find "message" and "actions" positions to extract the JSON structure
-      const msgIdx = raw.indexOf('"message"');
-      if (msgIdx >= 0) {
-        // Find the opening brace before "message"
-        let start = raw.lastIndexOf('{', msgIdx);
-        if (start >= 0) {
-          // Try parsing from each '{' working outward
-          let depth = 0;
-          for (let i = start; i < raw.length; i++) {
-            if (raw[i] === '{') depth++;
-            else if (raw[i] === '}') {
-              depth--;
-              if (depth === 0) {
-                try {
-                  const parsed = JSON.parse(raw.substring(start, i + 1));
-                  if (parsed.message !== undefined) {
-                    return {
-                      message: parsed.message,
-                      actions: Array.isArray(parsed.actions) ? parsed.actions : [],
-                    };
-                  }
-                } catch { /* try wider match */ }
-              }
-            }
-          }
+      // Execute tool calls and feed results back
+      // Add assistant message with all content blocks
+      messages.push({ role: 'assistant', content: response.content });
+
+      // Execute each tool call
+      const toolResults: any[] = [];
+      for (const toolUse of toolUses) {
+        if (toolUse.name === 'search_catalog') {
+          const query = toolUse.input?.query || '';
+          const limit = toolUse.input?.limit || 8;
+          console.log(`[AI Tool] search_catalog("${query}", ${limit})`);
+
+          const results = await searchCatalog(query, limit);
+          const formatted = results.length > 0
+            ? formatCatalogResults(results)
+            : `No results found for "${query}". Try a different search term.`;
+
+          console.log(`[AI Tool] Got ${results.length} results for "${query}"`);
+
+          toolResults.push({
+            type: 'tool_result',
+            tool_use_id: toolUse.id,
+            content: formatted,
+          });
         }
       }
-    } catch { /* try next strategy */ }
 
-    // Strategy 3: Regex fallback
-    try {
-      const jsonMatch = raw.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        const parsed = JSON.parse(jsonMatch[0]);
-        return {
-          message: parsed.message || textContent.text,
-          actions: Array.isArray(parsed.actions) ? parsed.actions : [],
-        };
-      }
-    } catch { /* fall through */ }
+      // Add tool results to messages
+      messages.push({ role: 'user', content: toolResults });
+    }
 
-    // Final fallback: strip any JSON artifacts and return as plain message
-    const cleaned = textContent.text
-      .replace(/^["\s]*message["\s]*:["\s]*/i, '')
-      .replace(/["\s]*,\s*"actions"\s*:\s*\[[\s\S]*$/i, '')
-      .replace(/^["']|["']$/g, '');
-    return { message: cleaned || textContent.text, actions: [] };
+    // If we exhausted iterations, try to get final response
+    throw new Error('Too many tool call iterations');
   } catch (error) {
     if (error instanceof Error) throw new Error(`Chat failed: ${error.message}`);
     throw new Error(`Chat failed: ${String(error)}`);
   }
+}
+
+/**
+ * Parse a JSON chat response from the AI, handling various formats
+ */
+function parseJsonResponse(text: string): ChatResponse {
+  const extract = (parsed: any): ChatResponse => ({
+    message: parsed.message,
+    actions: Array.isArray(parsed.actions) ? parsed.actions : [],
+    options: Array.isArray(parsed.options) ? parsed.options.filter((o: any) => typeof o === 'string') : undefined,
+  });
+
+  // Try direct parse
+  try {
+    const parsed = JSON.parse(text);
+    if (parsed.message !== undefined) return extract(parsed);
+  } catch { /* try next */ }
+
+  // Try finding JSON object in text
+  try {
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (parsed.message !== undefined) return extract(parsed);
+    }
+  } catch { /* try next */ }
+
+  // Find outermost JSON with "message" key
+  try {
+    const msgIdx = text.indexOf('"message"');
+    if (msgIdx >= 0) {
+      let start = text.lastIndexOf('{', msgIdx);
+      if (start >= 0) {
+        let depth = 0;
+        for (let i = start; i < text.length; i++) {
+          if (text[i] === '{') depth++;
+          else if (text[i] === '}') {
+            depth--;
+            if (depth === 0) {
+              try {
+                const parsed = JSON.parse(text.substring(start, i + 1));
+                if (parsed.message !== undefined) return extract(parsed);
+              } catch { /* continue */ }
+            }
+          }
+        }
+      }
+    }
+  } catch { /* fall through */ }
+
+  // Final fallback: return as plain message
+  const cleaned = text
+    .replace(/^["\s]*message["\s]*:["\s]*/i, '')
+    .replace(/["\s]*,\s*"actions"\s*:\s*\[[\s\S]*$/i, '')
+    .replace(/^["']|["']$/g, '');
+  return { message: cleaned || text, actions: [] };
 }
 
 export interface TaskExplanation {
@@ -618,6 +760,8 @@ ${language === 'sv' ? 'IMPORTANT: Write your ENTIRE response in Swedish (svenska
       }),
       timeoutPromise,
     ]) as any;
+
+    tokenTracker.log('explainTaskWithPhoto', response.usage);
 
     const textContent = response.content.find((block: any) => block.type === 'text');
     if (!textContent || textContent.type !== 'text') {

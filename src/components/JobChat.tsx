@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { useChat } from '../hooks/useIndexedDB';
 import { chatWithJob, type ChatContext } from '../utils/claude';
 import { searchKnowledge, learnFromChat, markUsed } from '../utils/knowledgeBase';
-import { searchCatalog, searchCatalogMulti, searchCatalogForTasks, formatCatalogResults, getInstallationTemplates, formatTemplateForAI, getAccessories } from '../utils/catalog';
+import { searchCatalog } from '../utils/catalog';
 import { useTranslation } from '../contexts/I18nContext';
 import type { Job, Task, Photo, ShoppingItem } from '../types';
 
@@ -16,16 +16,18 @@ interface JobChatProps {
   onCreateTask: (task: Omit<Task, 'id' | 'created_at' | 'updated_at'>) => Promise<any>;
   onDeleteTask: (taskId: string) => Promise<any>;
   onAddShoppingItem?: (item: Omit<ShoppingItem, 'id' | 'created_at'>) => Promise<any>;
+  onUpdateShoppingItem?: (id: string, updates: Partial<ShoppingItem>) => Promise<any>;
   onDeleteShoppingItem?: (id: string) => Promise<any>;
   shoppingItems?: ShoppingItem[];
 }
 
-export default function JobChat({ jobId, apiKey, job, tasks, photos, onUpdateTask, onCreateTask, onDeleteTask, onAddShoppingItem, onDeleteShoppingItem, shoppingItems = [] }: JobChatProps) {
+export default function JobChat({ jobId, apiKey, job, tasks, photos, onUpdateTask, onCreateTask, onDeleteTask, onAddShoppingItem, onUpdateShoppingItem, onDeleteShoppingItem, shoppingItems = [] }: JobChatProps) {
   const { t, language } = useTranslation();
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
   const [chatLoaded, setChatLoaded] = useState(false);
+  const [activeOptions, setActiveOptions] = useState<string[]>([]);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
@@ -48,12 +50,13 @@ export default function JobChat({ jobId, apiKey, job, tasks, photos, onUpdateTas
     }
   }, [isOpen]);
 
-  const handleSend = async () => {
-    const text = input.trim();
+  const handleSend = async (overrideText?: string) => {
+    const text = (overrideText || input).trim();
     if (!text || sending || !apiKey) return;
 
     setInput('');
     setSending(true);
+    setActiveOptions([]);
 
     try {
       await addMessage({ job_id: jobId, role: 'user', content: text });
@@ -79,35 +82,9 @@ export default function JobChat({ jobId, apiKey, job, tasks, photos, onUpdateTas
         : undefined;
       for (const entry of kbResults) markUsed(entry.id).catch(() => {});
 
-      // Search product catalog live from e-nummersok.se
-      const isMaterialQuery = /material|inköp|handla|köp|e-nummer|lista|behöver|produkt|data|uttag|kabel|keystone|patch|kanal|rör|dosa|central|brytare|dimmer|armatur|led|wago|hager|schneider|abb|exxact|flexslang/i.test(text);
-      let catalogResults = isMaterialQuery
-        ? await searchCatalogMulti(text, 8)
-        : await searchCatalog(text, 8);
-      if (isMaterialQuery && tasks.length > 0) {
-        const taskResults = await searchCatalogForTasks(
-          tasks.filter(tk => tk.status !== 'completed' && !tk.parent_task_id).map(tk => tk.title),
-          12
-        );
-        const seen = new Set(catalogResults.map(p => p.e));
-        for (const p of taskResults) {
-          if (!seen.has(p.e)) { catalogResults.push(p); seen.add(p.e); }
-        }
-      }
-      // Check for installation templates
-      const templates = getInstallationTemplates(text + ' ' + (job.description || ''));
-      const templateResults = await Promise.all(templates.map(formatTemplateForAI));
-      const templateContext = templateResults.join('\n\n');
-
-      let catalogContext = catalogResults.length > 0
-        ? formatCatalogResults(catalogResults)
-        : undefined;
-      if (templateContext) {
-        catalogContext = (catalogContext || '') + '\n\n' + templateContext;
-      }
-
+      // Catalog search is now handled by AI via tool use — the AI decides what to search for
       const history = messages.map((m) => ({ role: m.role, content: m.content }));
-      const response = await chatWithJob(text, history, context, apiKey, language, kbContext, catalogContext || undefined);
+      const response = await chatWithJob(text, history, context, apiKey, language, kbContext);
 
       // Execute any actions the AI returned
       let updated = 0, created = 0, deleted = 0, shopped = 0, shopDeleted = 0;
@@ -135,64 +112,46 @@ export default function JobChat({ jobId, apiKey, job, tasks, photos, onUpdateTas
             await onDeleteTask(action.task_id);
             deleted++;
           } else if (action.type === 'add_shopping_item' && action.name && onAddShoppingItem) {
-            // Auto-enrich with E-number from catalog if AI didn't provide one
+            // AI should provide e_number via tool use, but fallback search if missing
             let eNum = action.e_number;
             let artNum = action.article_number;
             let mfr = action.manufacturer;
             if (!eNum) {
-              // Strategy 1: Match against already-fetched catalog results (no API call)
-              const nameLower = action.name.toLowerCase();
-              const localMatch = catalogResults.find(p =>
-                p.n.toLowerCase().includes(nameLower) || nameLower.includes(p.n.toLowerCase()) ||
-                nameLower.split(' ').some(w => w.length > 3 && p.n.toLowerCase().includes(w))
-              );
-              if (localMatch) {
-                eNum = localMatch.e;
-                artNum = artNum || localMatch.a;
-                mfr = mfr || localMatch.m;
-                console.log(`[Shop] Enriched "${action.name}" from local cache: E-nr ${eNum}`);
-              } else {
-                // Strategy 2: New API search
-                let matches = await searchCatalog(action.name, 3);
-                if (matches.length === 0 && action.name.includes(' ')) {
-                  const words = action.name.split(' ').filter(w => w.length > 2).slice(0, 3);
-                  matches = await searchCatalog(words.join(' '), 3);
-                }
-                if (matches.length > 0) {
-                  eNum = matches[0].e;
-                  artNum = artNum || matches[0].a;
-                  mfr = mfr || matches[0].m;
-                  console.log(`[Shop] Enriched "${action.name}" from API: E-nr ${eNum}`);
-                } else {
-                  console.warn(`[Shop] No E-number found for "${action.name}"`);
-                }
+              let matches = await searchCatalog(action.name, 3);
+              if (matches.length === 0 && action.name.includes(' ')) {
+                const words = action.name.split(' ').filter(w => w.length > 2).slice(0, 3);
+                matches = await searchCatalog(words.join(' '), 3);
+              }
+              if (matches.length > 0) {
+                eNum = matches[0].e;
+                artNum = artNum || matches[0].a;
+                mfr = mfr || matches[0].m;
+                console.log(`[Shop] Enriched "${action.name}" from API: E-nr ${eNum}`);
               }
             }
-            const parentItem = await onAddShoppingItem({
-              job_id: jobId,
-              name: action.name,
-              e_number: eNum,
-              article_number: artNum,
-              manufacturer: mfr,
-              quantity: action.quantity || 1,
-              unit: action.unit || 'st',
-              checked: false,
-            });
-            shopped++;
-            // Auto-add accessories as sub-items
-            const accessories = await getAccessories(action.name);
-            for (const acc of accessories) {
+            // Deduplicate: if same E-number exists, update quantity instead
+            const existingItem = eNum
+              ? shoppingItems.find(s => s.e_number === eNum)
+              : shoppingItems.find(s => s.name.toLowerCase() === action.name!.toLowerCase());
+            if (existingItem && onUpdateShoppingItem) {
+              await onUpdateShoppingItem(existingItem.id, {
+                quantity: existingItem.quantity + (action.quantity || 1),
+              });
+              console.log(`[Shop] Deduplicated "${action.name}" — updated quantity to ${existingItem.quantity + (action.quantity || 1)}`);
+              shopped++;
+            } else {
               await onAddShoppingItem({
                 job_id: jobId,
-                name: acc.note,
-                e_number: acc.match?.e,
-                article_number: acc.match?.a,
-                manufacturer: acc.match?.m,
-                quantity: 1,
-                unit: 'st',
+                name: action.name,
+                e_number: eNum,
+                article_number: artNum,
+                manufacturer: mfr,
+                category: action.category,
+                quantity: action.quantity || 1,
+                unit: action.unit || 'st',
                 checked: false,
-                parent_item_id: parentItem.id,
               });
+              shopped++;
             }
           } else if (action.type === 'delete_shopping_item' && action.name && onDeleteShoppingItem) {
             // Delete parent and its sub-items
@@ -225,11 +184,44 @@ export default function JobChat({ jobId, apiKey, job, tasks, photos, onUpdateTas
 
       await addMessage({ job_id: jobId, role: 'assistant', content: displayMessage });
 
+      // Store interactive options if AI provided them
+      if (response.options && response.options.length > 0) {
+        setActiveOptions(response.options);
+      }
+
       // Auto-learn from AI response (fire-and-forget)
       learnFromChat(text, response.message, language).catch(() => {});
     } catch (error) {
       const msg = error instanceof Error ? error.message : 'Unknown error';
-      await addMessage({ job_id: jobId, role: 'assistant', content: `Error: ${msg}` });
+      // Show user-friendly error messages instead of raw API errors
+      let friendlyMsg: string;
+      if (msg.includes('credit balance') || msg.includes('billing') || msg.includes('purchase credits')) {
+        friendlyMsg = language === 'sv'
+          ? '⚠️ API-krediter slut. Fyll på credits på console.anthropic.com under Billing.'
+          : '⚠️ API credits depleted. Top up at console.anthropic.com under Billing.';
+      } else if (msg.includes('invalid_api_key') || msg.includes('authentication')) {
+        friendlyMsg = language === 'sv'
+          ? '⚠️ Ogiltig API-nyckel. Kontrollera din nyckel i Inställningar.'
+          : '⚠️ Invalid API key. Check your key in Settings.';
+      } else if (msg.includes('rate_limit') || msg.includes('429')) {
+        friendlyMsg = language === 'sv'
+          ? '⚠️ För många anrop. Vänta en stund och försök igen.'
+          : '⚠️ Too many requests. Wait a moment and try again.';
+      } else if (msg.includes('timed out')) {
+        friendlyMsg = language === 'sv'
+          ? '⚠️ Anropet tog för lång tid. Försök igen.'
+          : '⚠️ Request timed out. Please try again.';
+      } else if (msg.includes('Too many tool call')) {
+        friendlyMsg = language === 'sv'
+          ? '⚠️ Sökningen tog för lång tid. Försök med en mer specifik fråga.'
+          : '⚠️ Search took too long. Try a more specific question.';
+      } else {
+        friendlyMsg = language === 'sv'
+          ? `⚠️ Något gick fel. Försök igen.`
+          : `⚠️ Something went wrong. Please try again.`;
+      }
+      console.error('[Chat Error]', msg);
+      await addMessage({ job_id: jobId, role: 'assistant', content: friendlyMsg });
     } finally {
       setSending(false);
     }
@@ -243,126 +235,7 @@ export default function JobChat({ jobId, apiKey, job, tasks, photos, onUpdateTas
   };
 
   const handleSuggestionClick = (text: string) => {
-    setInput(text);
-    // Auto-send after a brief moment so the user sees what was selected
-    setTimeout(() => {
-      setInput(text);
-      const fakeEvent = { trim: () => text } as any;
-      void fakeEvent; // just set and let user press send, or auto-send:
-      handleSendWithText(text);
-    }, 50);
-  };
-
-  const handleSendWithText = async (text: string) => {
-    if (!text.trim() || sending || !apiKey) return;
-    setInput('');
-    setSending(true);
-
-    try {
-      await addMessage({ job_id: jobId, role: 'user', content: text });
-
-      const context: ChatContext = {
-        job: { name: job.name, description: job.description || undefined, address: job.address || undefined },
-        tasks: tasks.map((tk) => ({ id: tk.id, title: tk.title, status: tk.status, source_photo_id: tk.source_photo_id })),
-        photoSummaries: photos
-          .filter((p) => p.extracted_info)
-          .map((p) => ({ id: p.id, component_type: p.extracted_info?.component_type, condition: p.extracted_info?.condition, recommendations: p.extracted_info?.recommendations })),
-      };
-
-      const kbResults = await searchKnowledge(text);
-      const kbContext = kbResults.length > 0
-        ? kbResults.map((k) => `Q: ${k.question}\nA: ${k.answer}`).join('\n\n')
-        : undefined;
-      for (const entry of kbResults) markUsed(entry.id).catch(() => {});
-
-      const isMaterialQ = /material|inköp|handla|köp|e-nummer|lista|behöver|produkt|data|uttag|kabel|keystone|patch/i.test(text);
-      let catalogResults2 = isMaterialQ
-        ? await searchCatalogMulti(text, 5)
-        : await searchCatalog(text, 8);
-      if (isMaterialQ && tasks.length > 0) {
-        const taskResults = await searchCatalogForTasks(
-          tasks.filter(tk => tk.status !== 'completed' && !tk.parent_task_id).map(tk => tk.title), 12
-        );
-        const seen = new Set(catalogResults2.map(p => p.e));
-        for (const p of taskResults) { if (!seen.has(p.e)) { catalogResults2.push(p); seen.add(p.e); } }
-      }
-      const templates2 = getInstallationTemplates(text + ' ' + (job.description || ''));
-      const templateResults2 = await Promise.all(templates2.map(formatTemplateForAI));
-      const templateCtx2 = templateResults2.join('\n\n');
-      let catalogContext = catalogResults2.length > 0 ? formatCatalogResults(catalogResults2) : undefined;
-      if (templateCtx2) catalogContext = (catalogContext || '') + '\n\n' + templateCtx2;
-
-      const history = messages.map((m) => ({ role: m.role, content: m.content }));
-      const response = await chatWithJob(text, history, context, apiKey, language, kbContext, catalogContext || undefined);
-
-      let updated = 0, created = 0, deleted = 0, shopped = 0, shopDeleted = 0;
-      for (const action of response.actions) {
-        try {
-          if (action.type === 'update_task' && action.task_id) {
-            const updates: Partial<Task> = {};
-            if (action.status) updates.status = action.status;
-            if (action.title) updates.title = action.title;
-            if (Object.keys(updates).length > 0) { await onUpdateTask(action.task_id, updates); updated++; }
-          } else if (action.type === 'create_task' && action.title) {
-            await onCreateTask({ job_id: jobId, title: action.title, description: '', status: 'pending', notes: '', parent_task_id: action.parent_task_id });
-            created++;
-          } else if (action.type === 'delete_task' && action.task_id) {
-            await onDeleteTask(action.task_id); deleted++;
-          } else if (action.type === 'add_shopping_item' && action.name && onAddShoppingItem) {
-            let eNum2 = action.e_number, artNum2 = action.article_number, mfr2 = action.manufacturer;
-            if (!eNum2) {
-              const nameLower2 = action.name.toLowerCase();
-              const localMatch2 = catalogResults2.find(p =>
-                p.n.toLowerCase().includes(nameLower2) || nameLower2.includes(p.n.toLowerCase()) ||
-                nameLower2.split(' ').some(w => w.length > 3 && p.n.toLowerCase().includes(w))
-              );
-              if (localMatch2) {
-                eNum2 = localMatch2.e; artNum2 = artNum2 || localMatch2.a; mfr2 = mfr2 || localMatch2.m;
-              } else {
-                let m = await searchCatalog(action.name, 3);
-                if (m.length === 0 && action.name.includes(' ')) {
-                  const words = action.name.split(' ').filter(w => w.length > 2).slice(0, 3);
-                  m = await searchCatalog(words.join(' '), 3);
-                }
-                if (m.length > 0) { eNum2 = m[0].e; artNum2 = artNum2 || m[0].a; mfr2 = mfr2 || m[0].m; }
-              }
-            }
-            const parentItem2 = await onAddShoppingItem({ job_id: jobId, name: action.name, e_number: eNum2, article_number: artNum2, manufacturer: mfr2, quantity: action.quantity || 1, unit: action.unit || 'st', checked: false });
-            shopped++;
-            const accs2 = await getAccessories(action.name);
-            for (const acc of accs2) {
-              await onAddShoppingItem({ job_id: jobId, name: acc.note, e_number: acc.match?.e, article_number: acc.match?.a, manufacturer: acc.match?.m, quantity: 1, unit: 'st', checked: false, parent_item_id: parentItem2.id });
-            }
-          } else if (action.type === 'delete_shopping_item' && action.name && onDeleteShoppingItem) {
-            const match = shoppingItems.find((s) => s.name.toLowerCase().includes(action.name!.toLowerCase()));
-            if (match) {
-              const subs = shoppingItems.filter((s) => s.parent_item_id === match.id);
-              for (const sub of subs) await onDeleteShoppingItem(sub.id);
-              await onDeleteShoppingItem(match.id); shopDeleted++;
-            }
-          } else if (action.type === 'clear_shopping_list' && onDeleteShoppingItem) {
-            for (const s of shoppingItems) { await onDeleteShoppingItem(s.id); shopDeleted++; }
-          }
-        } catch (err) { console.error('[Chat] Failed to apply action:', err); }
-      }
-
-      let displayMessage = response.message;
-      const parts: string[] = [];
-      if (created > 0) parts.push(language === 'sv' ? `${created} uppgift(er) skapad(e)` : `${created} task(s) created`);
-      if (updated > 0) parts.push(language === 'sv' ? `${updated} uppgift(er) uppdaterad(e)` : `${updated} task(s) updated`);
-      if (deleted > 0) parts.push(language === 'sv' ? `${deleted} uppgift(er) borttagen/borttagna` : `${deleted} task(s) deleted`);
-      if (shopped > 0) parts.push(language === 'sv' ? `${shopped} artikel tillagd(a) i inköpslistan` : `${shopped} item(s) added to shopping list`);
-      if (shopDeleted > 0) parts.push(language === 'sv' ? `${shopDeleted} artikel borttagen från inköpslistan` : `${shopDeleted} item(s) removed from shopping list`);
-      if (parts.length > 0) displayMessage += '\n\n\u2705 ' + parts.join(', ');
-
-      await addMessage({ job_id: jobId, role: 'assistant', content: displayMessage });
-      learnFromChat(text, response.message, language).catch(() => {});
-    } catch (error) {
-      const msg = error instanceof Error ? error.message : 'Unknown error';
-      await addMessage({ job_id: jobId, role: 'assistant', content: `Error: ${msg}` });
-    } finally {
-      setSending(false);
-    }
+    handleSend(text);
   };
 
   // Generate contextual quick-reply suggestions
@@ -518,14 +391,28 @@ export default function JobChat({ jobId, apiKey, job, tasks, photos, onUpdateTas
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Suggestions + Input */}
+      {/* Options + Suggestions + Input */}
       <div className="flex-shrink-0 border-t border-gray-200 dark:border-gray-700 p-3">
         {!apiKey ? (
           <p className="text-sm text-center text-gray-400">{t('chat.noApiKey')}</p>
         ) : (
           <>
-            {/* Quick-reply chips */}
-            {suggestions.length > 0 && !sending && !input.trim() && (
+            {/* AI option buttons — interactive product/choice selection */}
+            {activeOptions.length > 0 && !sending && (
+              <div className="flex flex-wrap gap-1.5 mb-2">
+                {activeOptions.map((opt, i) => (
+                  <button
+                    key={i}
+                    onClick={() => handleSend(opt)}
+                    className="px-3 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 active:bg-blue-800 transition-colors shadow-sm"
+                  >
+                    {opt}
+                  </button>
+                ))}
+              </div>
+            )}
+            {/* Quick-reply suggestion chips */}
+            {activeOptions.length === 0 && suggestions.length > 0 && !sending && !input.trim() && (
               <div className="flex flex-wrap gap-1.5 mb-2">
                 {suggestions.map((s, i) => (
                   <button
