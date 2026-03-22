@@ -5,6 +5,7 @@ import { useJobs, useSavedContacts } from '../hooks/useIndexedDB';
 import { saveContactsFromJob } from '../utils/db';
 import { useTranslation } from '../contexts/I18nContext';
 import JobForm from '../components/JobForm';
+import MapTileBackground from '../components/MapTileBackground';
 
 interface HomePageProps {
   apiKey: string | null;
@@ -69,7 +70,7 @@ export default function HomePage({ apiKey }: HomePageProps) {
 
       <div className="flex items-center justify-between mb-6">
         <h1 className="text-3xl font-bold text-blue-900 dark:text-gray-100">{t('home.electricalJobs')}</h1>
-        <button onClick={() => setShowForm(true)} className="btn-primary flex items-center gap-2">
+        <button onClick={() => setShowForm(true)} className="btn-primary flex items-center gap-2 transition-all duration-200 hover:scale-105 hover:shadow-lg hover:shadow-blue-500/25 active:scale-95">
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
           </svg>
@@ -109,17 +110,27 @@ export default function HomePage({ apiKey }: HomePageProps) {
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {activeJobs.map((job) => (
-              <Link key={job.id} to={`/job/${job.id}`} className="card hover:shadow-lg transition-shadow cursor-pointer group">
-                <div className="flex items-start justify-between mb-3">
-                  <div className="flex-1">
-                    <h3 className="font-bold text-blue-900 dark:text-gray-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors line-clamp-2">{job.name}</h3>
-                    {job.contacts?.[0] && <p className="text-sm text-gray-500 dark:text-gray-400">{job.contacts[0].name}{job.contacts.length > 1 ? ` +${job.contacts.length - 1}` : ''}</p>}
-                    <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-1">{job.address}</p>
+              <Link key={job.id} to={`/job/${job.id}`} className="card cursor-pointer group transition-all duration-300 ease-out hover:shadow-xl hover:shadow-blue-500/10 hover:-translate-y-1 hover:border-blue-500/30 dark:hover:border-blue-400/30 border border-transparent overflow-hidden !p-0">
+                {job.lat && job.lon ? (
+                  <MapTileBackground lat={job.lat} lon={job.lon} className="h-20">
+                    <div className="absolute inset-0 bg-gradient-to-t from-white/80 dark:from-gray-800/80 via-transparent to-transparent" />
+                    <span className="badge-primary absolute top-2 right-2">{t('home.active')}</span>
+                  </MapTileBackground>
+                ) : (
+                  <div className="h-2 bg-gradient-to-r from-blue-500 to-blue-600 rounded-t-lg" />
+                )}
+                <div className="p-4">
+                  <div className="flex items-start justify-between mb-1">
+                    <div className="flex-1">
+                      <h3 className="font-bold text-blue-900 dark:text-gray-100 group-hover:text-blue-500 dark:group-hover:text-blue-400 transition-colors duration-300 line-clamp-2">{job.name}</h3>
+                      {job.contacts?.[0] && <p className="text-sm text-gray-500 dark:text-gray-400">{job.contacts[0].name}{job.contacts.length > 1 ? ` +${job.contacts.length - 1}` : ''}</p>}
+                      <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-1">{job.address}</p>
+                    </div>
+                    {!(job.lat && job.lon) && <span className="badge-primary ml-2 flex-shrink-0">{t('home.active')}</span>}
                   </div>
-                  <span className="badge-primary ml-2 flex-shrink-0">{t('home.active')}</span>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2 mb-2">{job.description}</p>
+                  <div className="text-xs text-gray-500">{new Date(job.created_at).toLocaleDateString()}</div>
                 </div>
-                <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2 mb-3">{job.description}</p>
-                <div className="text-xs text-gray-500">{new Date(job.created_at).toLocaleDateString()}</div>
               </Link>
             ))}
           </div>
@@ -133,10 +144,10 @@ export default function HomePage({ apiKey }: HomePageProps) {
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
             {completedJobs.map((job) => (
-              <Link key={job.id} to={`/job/${job.id}`} className="card opacity-75 hover:opacity-100 transition-opacity cursor-pointer group">
+              <Link key={job.id} to={`/job/${job.id}`} className="card opacity-75 cursor-pointer group transition-all duration-300 ease-out hover:opacity-100 hover:shadow-lg hover:shadow-green-500/10 hover:-translate-y-1 hover:border-green-500/20 dark:hover:border-green-400/20 border border-transparent">
                 <div className="flex items-start justify-between mb-3">
                   <div className="flex-1">
-                    <h3 className="font-bold text-gray-600 dark:text-gray-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors line-clamp-2">{job.name}</h3>
+                    <h3 className="font-bold text-gray-600 dark:text-gray-400 group-hover:text-blue-500 dark:group-hover:text-blue-400 transition-colors duration-300 line-clamp-2">{job.name}</h3>
                     <p className="text-sm text-gray-500 line-clamp-1">{job.address}</p>
                   </div>
                   <span className="badge-success ml-2 flex-shrink-0">{t('home.done')}</span>

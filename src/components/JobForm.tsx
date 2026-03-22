@@ -23,6 +23,8 @@ export default function JobForm({ job, savedContacts = [], onSubmit, onCancel }:
     name: job?.name || '',
     address: job?.address || '',
     description: job?.description || '',
+    lat: job?.lat as number | undefined,
+    lon: job?.lon as number | undefined,
   });
   const [contacts, setContacts] = useState<JobContact[]>(
     job?.contacts || []
@@ -136,6 +138,7 @@ export default function JobForm({ job, savedContacts = [], onSubmit, onCancel }:
           placeholder={t('jobForm.addressPlaceholder')}
           value={formData.address}
           onChange={(address) => setFormData({ ...formData, address })}
+          onCoordinates={(lat, lon) => setFormData((prev) => ({ ...prev, lat, lon }))}
         />
       </div>
 

@@ -26,6 +26,8 @@ export interface Job {
   address: string;
   description: string;
   contacts?: JobContact[];
+  lat?: number;
+  lon?: number;
   status: 'active' | 'completed' | 'archived';
   created_at: number;
   updated_at: number;
@@ -110,10 +112,34 @@ export interface ChatMessage {
   created_at: number;
 }
 
+// Panel schedule (gruppförteckning)
+export interface PanelScheduleRow {
+  id: string;
+  group_number: number;       // Grupp nr
+  description: string;        // Gruppen omfattar
+  module_number: string;      // Modul nr
+  rated_current: string;      // Märkström A (e.g. "10", "16", "20")
+  conductor_size: string;     // Ledarantal/mått (e.g. "3G1.5", "3G2.5", "5G2.5")
+}
+
+export interface PanelSchedule {
+  id: string;
+  job_id: string;
+  name: string;
+  rows: PanelScheduleRow[];
+  fault_contact: string;      // "Vid fel ring:" info
+  source_photo_id?: string;
+  created_at: number;
+  updated_at: number;
+}
+
 // API Key storage
 export interface AppSettings {
   claude_api_key?: string;
   language?: 'en' | 'sv';
   theme?: 'light' | 'dark' | 'system';
+  company_name?: string;
+  company_logo?: string;     // base64 data URL
+  company_website?: string;
   last_updated: number;
 }

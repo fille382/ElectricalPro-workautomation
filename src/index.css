@@ -9,8 +9,7 @@ html {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
-    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto',
     sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -26,4 +25,74 @@ html.dark body {
 
 #root {
   min-height: 100vh;
+}
+
+/* Print styles for panel schedules */
+@media print {
+  @page { margin: 10mm; }
+
+  /* Hide EVERYTHING first */
+  body * { visibility: hidden; }
+  body { background: white !important; margin: 0; padding: 0; }
+
+  /* Show only the active panel schedule */
+  [id^="panel-schedule-"],
+  [id^="panel-schedule-"] * {
+    visibility: visible !important;
+    color: black !important;
+  }
+  [id^="panel-schedule-"] {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    border: none !important;
+    box-shadow: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+  }
+
+  /* Hide buttons, chevrons, and non-print elements */
+  .no-print, button, [class*="btn-"], svg { display: none !important; }
+
+  /* Schedule name as title */
+  [id^="panel-schedule-"] > div:first-child {
+    font-size: 16pt;
+    font-weight: bold;
+    padding: 0 0 8px 0 !important;
+    border-bottom: none;
+  }
+  [id^="panel-schedule-"] > div:first-child span:last-child { display: none !important; }
+
+  /* Table styling */
+  .panel-schedule-table {
+    border-collapse: collapse;
+    width: 100%;
+  }
+  .panel-schedule-table th,
+  .panel-schedule-table td {
+    border: 1px solid #333;
+    padding: 4px 8px;
+    font-size: 11pt;
+    color: black !important;
+  }
+  .panel-schedule-table th {
+    background: #eee !important;
+    font-weight: bold;
+    color: black !important;
+  }
+
+  /* "Vid fel ring" footer */
+  input { border: none !important; color: black !important; font-size: 11pt; }
+
+  /* Company logo header - show in print */
+  .print-company-header {
+    display: flex !important;
+    visibility: visible !important;
+  }
+  .print-company-header * {
+    visibility: visible !important;
+    color: black !important;
+  }
 }
