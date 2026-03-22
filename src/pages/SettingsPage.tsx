@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useTranslation } from '../contexts/I18nContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useDebugLog } from '../contexts/DebugLogContext';
+import { getSettings, saveSettings } from '../utils/db';
 
 interface SettingsPageProps {
   apiKey: string | null;
@@ -13,10 +14,43 @@ interface SettingsPageProps {
 export default function SettingsPage({ apiKey, onApiKeyChange }: SettingsPageProps) {
   const [tempApiKey, setTempApiKey] = useState(apiKey || '');
   const [showApiKey, setShowApiKey] = useState(false);
+  const [companyName, setCompanyName] = useState('');
+  const [companyWebsite, setCompanyWebsite] = useState('');
+  const [companyLogo, setCompanyLogo] = useState<string | null>(null);
+  const logoInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
   const { t, language, languageSetting, setLanguage } = useTranslation();
   const { themeSetting, setTheme } = useTheme();
   const { enabled: debugEnabled, setEnabled: setDebugEnabled } = useDebugLog();
+
+  // Load company settings on mount
+  useEffect(() => {
+    getSettings().then((s) => {
+      setCompanyName(s.company_name || '');
+      setCompanyWebsite(s.company_website || '');
+      setCompanyLogo(s.company_logo || null);
+    });
+  }, []);
+
+  const saveCompanySettings = async (updates: { company_name?: string; company_website?: string; company_logo?: string }) => {
+    const current = await getSettings();
+    await saveSettings({ ...current, ...updates });
+  };
+
+
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = async () => {
+      const dataUrl = reader.result as string;
+      setCompanyLogo(dataUrl);
+      await saveCompanySettings({ company_logo: dataUrl });
+      toast.success(t('settings.companyLogo') + ' ✓');
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  };
 
   const handleSaveApiKey = () => {
     if (!tempApiKey.trim()) {
@@ -78,6 +112,62 @@ export default function SettingsPage({ apiKey, onApiKeyChange }: SettingsPagePro
             >
               <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${debugEnabled ? 'translate-x-6' : ''}`} />
             </button>
+          </div>
+        </div>
+      </div>
+
+      {/* Company Profile Section */}
+      <div className="card mb-6">
+        <h2 className="text-xl font-bold text-blue-900 dark:text-gray-100 mb-4">{t('settings.company')}</h2>
+        <input ref={logoInputRef} type="file" accept="image/*" className="hidden" onChange={handleLogoUpload} />
+        <div className="space-y-4">
+          <div className="flex items-center gap-4">
+            {/* Logo preview */}
+            <div
+              className="w-20 h-20 rounded-lg border-2 border-dashed border-gray-300 dark:border-gray-600 flex items-center justify-center cursor-pointer hover:border-blue-400 transition-colors overflow-hidden flex-shrink-0"
+              onClick={() => logoInputRef.current?.click()}
+            >
+              {companyLogo ? (
+                <img src={companyLogo} alt="Logo" className="w-full h-full object-contain" />
+              ) : (
+                <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              )}
+            </div>
+            <div className="flex-1 space-y-2">
+              <button onClick={() => logoInputRef.current?.click()} className="text-sm text-blue-500 hover:text-blue-600">
+                {t('settings.uploadLogo')}
+              </button>
+              {companyLogo && (
+                <button
+                  onClick={async () => { setCompanyLogo(null); await saveCompanySettings({ company_logo: '' }); }}
+                  className="text-sm text-red-500 hover:text-red-600 ml-3"
+                >
+                  {t('settings.removeLogo')}
+                </button>
+              )}
+            </div>
+          </div>
+          <div>
+            <label className="label-text">{t('settings.companyName')}</label>
+            <input
+              className="input-field"
+              placeholder="T.ex. Bellanders El AB"
+              value={companyName}
+              onChange={(e) => setCompanyName(e.target.value)}
+              onBlur={() => saveCompanySettings({ company_name: companyName })}
+            />
+          </div>
+          <div>
+            <label className="label-text">{t('settings.companyWebsite')}</label>
+            <input
+              className="input-field"
+              placeholder="www.example.se"
+              value={companyWebsite}
+              onChange={(e) => setCompanyWebsite(e.target.value)}
+              onBlur={() => saveCompanySettings({ company_website: companyWebsite })}
+            />
           </div>
         </div>
       </div>

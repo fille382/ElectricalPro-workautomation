@@ -795,3 +795,106 @@ ${language === 'sv' ? 'IMPORTANT: Write your ENTIRE response in Swedish (svenska
     throw new Error(`Failed to explain task: ${msg}`);
   }
 }
+
+/**
+ * Analyze a panel schedule (gruppschema) photo and extract circuit data
+ */
+export async function analyzePanelSchedule(
+  imageBlob: Blob,
+  apiKey: string,
+  language: string
+): Promise<{ name: string; rows: Array<{ group_number: number; breaker_size: string; breaker_type: string; phase: string; cable_type: string; description: string; rcd: string }> }> {
+  // Compress and convert to base64 (reuse existing pattern from analyzeElectricalPanel)
+  const canvas = document.createElement('canvas');
+  const img = new Image();
+  const url = URL.createObjectURL(imageBlob);
+
+  const loaded = await new Promise<HTMLImageElement>((resolve) => {
+    img.onload = () => resolve(img);
+    img.src = url;
+  });
+  URL.revokeObjectURL(url);
+
+  const maxDim = 1600;
+  let { width, height } = loaded;
+  if (width > maxDim || height > maxDim) {
+    const scale = maxDim / Math.max(width, height);
+    width *= scale;
+    height *= scale;
+  }
+  canvas.width = width;
+  canvas.height = height;
+  canvas.getContext('2d')!.drawImage(loaded, 0, 0, width, height);
+
+  const base64Full = canvas.toDataURL('image/jpeg', 0.85);
+  const base64Image = base64Full.split(',')[1];
+
+  let mediaType = 'image/jpeg';
+  if (base64Image.startsWith('UklGR')) mediaType = 'image/webp';
+  else if (base64Image.startsWith('iVBOR')) mediaType = 'image/png';
+
+  const response = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
+      'anthropic-dangerous-direct-browser-access': 'true',
+    },
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-20250514',
+      max_tokens: 4096,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64Image } },
+          { type: 'text', text: `Analyze this Swedish electrical panel schedule (gruppförteckning) photo. This is a standard Swedish format with these columns:
+
+- Grupp nr (group number)
+- Gruppen omfattar (what the group covers / description)
+- Modul nr (module number in the panel)
+- Märkström A (rated current in amperes)
+- Ledarantal/mått (conductor count and size, e.g. "3G1.5", "3G2.5", "5G6")
+
+Also look for "Vid fel ring:" (fault contact info) at the bottom.
+
+For each row, extract:
+- group_number: integer
+- description: text from "Gruppen omfattar" column (e.g. "Kök uttag", "Badrum belysning", "Spis")
+- module_number: text from "Modul nr" column
+- rated_current: text from "Märkström A" column (e.g. "10", "16", "20", "25")
+- conductor_size: text from "Ledarantal/mått" column (e.g. "3G1.5", "3G2.5")
+
+Respond in JSON:
+{"name": "Gruppförteckning", "fault_contact": "", "rows": [{"group_number": 1, "description": "Kök uttag", "module_number": "1", "rated_current": "16", "conductor_size": "3G2.5"}, ...]}
+
+Extract ALL visible rows with data. Skip completely empty rows. Use "" for unreadable fields.` }
+        ],
+      }],
+    }),
+  });
+
+  if (!response.ok) {
+    const err = await response.text();
+    throw new Error(`Panel schedule analysis failed: ${err}`);
+  }
+
+  const data = await response.json();
+
+  // Track tokens
+  if (data.usage) {
+    const inp = data.usage.input_tokens || 0;
+    const out = data.usage.output_tokens || 0;
+    const cached = data.usage.cache_read_input_tokens || 0;
+    const cost = ((inp - cached) * 3 + cached * 0.3 + out * 15) / 1_000_000;
+    console.log(`[Tokens] analyzePanelSchedule: in: ${inp.toLocaleString()}${cached ? ` (${cached.toLocaleString()} cached)` : ''} | out: ${out.toLocaleString()} | ~$${cost.toFixed(4)}`);
+  }
+
+  const text = data.content?.[0]?.text || '';
+
+  // Parse JSON from response
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error('Could not parse panel schedule response');
+
+  return JSON.parse(jsonMatch[0]);
+}

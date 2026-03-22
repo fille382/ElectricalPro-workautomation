@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import * as db from '../utils/db';
-import type { Job, Task, Photo, SavedContact, ChatMessage, ShoppingItem } from '../types';
+import type { Job, Task, Photo, SavedContact, ChatMessage, ShoppingItem, PanelSchedule } from '../types';
 
 /**
  * Hook to manage jobs
@@ -331,4 +331,42 @@ export function useShoppingList(jobId: string | null) {
   };
 
   return { items, loading, addItem, updateItem, deleteItem, refresh: loadItems };
+}
+
+export function usePanelSchedules(jobId: string | null) {
+  const [schedules, setSchedules] = useState<PanelSchedule[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const loadSchedules = async () => {
+    if (!jobId) { setSchedules([]); setLoading(false); return; }
+    try {
+      setLoading(true);
+      const result = await db.getPanelSchedules(jobId);
+      setSchedules(result);
+    } catch (err) {
+      console.error('Failed to load panel schedules:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { loadSchedules(); }, [jobId]);
+
+  const addSchedule = async (data: Omit<PanelSchedule, 'id' | 'created_at' | 'updated_at'>) => {
+    const newSchedule = await db.addPanelSchedule(data);
+    setSchedules((prev) => [...prev, newSchedule]);
+    return newSchedule;
+  };
+
+  const updateSchedule = async (id: string, updates: Partial<PanelSchedule>) => {
+    await db.updatePanelSchedule(id, updates);
+    setSchedules((prev) => prev.map((s) => (s.id === id ? { ...s, ...updates, updated_at: Date.now() } : s)));
+  };
+
+  const deleteSchedule = async (id: string) => {
+    await db.deletePanelSchedule(id);
+    setSchedules((prev) => prev.filter((s) => s.id !== id));
+  };
+
+  return { schedules, loading, addSchedule, updateSchedule, deleteSchedule, refresh: loadSchedules };
 }

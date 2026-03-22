@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { useJobs, useTasks, usePhotos, useSavedContacts, useShoppingList } from '../hooks/useIndexedDB';
+import { useJobs, useTasks, usePhotos, useSavedContacts, useShoppingList, usePanelSchedules } from '../hooks/useIndexedDB';
 import { saveContactsFromJob } from '../utils/db';
 import { useClaude } from '../hooks/useClaude';
 import { useTranslation } from '../contexts/I18nContext';
@@ -11,8 +11,10 @@ import CameraCapture from '../components/CameraCapture';
 import PhotoGallery from '../components/PhotoGallery';
 import JobChat from '../components/JobChat';
 import ShoppingList from '../components/ShoppingList';
+import PanelScheduleEditor from '../components/PanelScheduleEditor';
 import type { Task } from '../types';
 import { computeImageHash } from '../utils/imageHash';
+import MapTileBackground from '../components/MapTileBackground';
 
 interface JobDetailPageProps {
   apiKey: string | null;
@@ -28,8 +30,9 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
   const { analyzePanel, explainTask } = useClaude(apiKey);
   const { savedContacts, refresh: refreshContacts } = useSavedContacts();
   const { items: shoppingItems, addItem: addShoppingItem, updateItem: updateShoppingItem, deleteItem: deleteShoppingItem } = useShoppingList(jobId || null);
+  const { schedules: panelSchedules, addSchedule: addPanelSchedule, updateSchedule: updatePanelSchedule, deleteSchedule: deletePanelSchedule } = usePanelSchedules(jobId || null);
 
-  const [activeTab, setActiveTab] = useState<'tasks' | 'shopping'>('tasks');
+  const [activeTab, setActiveTab] = useState<'tasks' | 'shopping' | 'panels'>('tasks');
   const [showEditJob, setShowEditJob] = useState(false);
   const [showAddTask, setShowAddTask] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
@@ -299,7 +302,13 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
   return (
     <div className="max-w-7xl mx-auto px-4 py-6">
       {/* Job Header */}
-      <div className="card mb-6 bg-gradient-to-r from-blue-50 to-blue-100 dark:from-gray-800 dark:to-gray-750 border-l-4 border-blue-600">
+      <div className="card mb-6 bg-gradient-to-r from-blue-50 to-blue-100 dark:from-gray-800 dark:to-gray-750 border-l-4 border-blue-600 overflow-hidden !p-0 relative">
+        {job.lat && job.lon && (
+          <MapTileBackground lat={job.lat} lon={job.lon} zoom={13} className="absolute inset-0 rounded-lg" style={{ zIndex: 0 }}>
+            <div className="absolute inset-0 bg-blue-50/60 dark:bg-gray-800/60" />
+          </MapTileBackground>
+        )}
+        <div className="relative z-10 p-4 md:p-6">
         <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
           <div className="flex-1">
             <h1 className="text-3xl font-bold text-blue-900 dark:text-gray-100 mb-2">{job.name}</h1>
@@ -382,6 +391,7 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
             <div className="h-full bg-green-600 transition-all duration-300" style={{ width: topLevelTasks.length > 0 ? `${(completedTasks.length / topLevelTasks.length) * 100}%` : '0%' }} />
           </div>
         </div>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -404,6 +414,15 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
                   </svg>
                   {t('shopping.title')} ({shoppingItems.length})
                 </button>
+                <button
+                  onClick={() => setActiveTab('panels')}
+                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors flex items-center gap-1.5 ${activeTab === 'panels' ? 'bg-white dark:bg-gray-600 text-blue-900 dark:text-gray-100 shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'}`}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M3 14h18M3 6h18M3 18h18" />
+                  </svg>
+                  {t('panel.title')} ({panelSchedules.length})
+                </button>
               </div>
               {activeTab === 'tasks' && (
                 <button onClick={() => setShowAddTask(true)} className="btn-primary text-sm flex items-center gap-2">
@@ -421,6 +440,18 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
                 onToggle={(id, checked) => updateShoppingItem(id, { checked })}
                 onDelete={deleteShoppingItem}
                 onUpdateQuantity={(id, quantity) => updateShoppingItem(id, { quantity })}
+              />
+            )}
+
+            {activeTab === 'panels' && (
+              <PanelScheduleEditor
+                schedules={panelSchedules}
+                jobId={jobId!}
+                apiKey={apiKey}
+                contacts={job.contacts}
+                onAdd={addPanelSchedule}
+                onUpdate={updatePanelSchedule}
+                onDelete={deletePanelSchedule}
               />
             )}
 

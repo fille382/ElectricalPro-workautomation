@@ -213,6 +213,32 @@ const en = {
   'shopping.empty': 'No items in the shopping list.',
   'shopping.askAI': 'Ask the AI to create a shopping list from your tasks.',
   'shopping.bought': 'Bought',
+
+  // Panel Schedule
+  'panel.title': 'Panel Schedule',
+  'panel.addSchedule': '+ New Schedule',
+  'panel.group': 'Group',
+  'panel.breaker': 'Breaker',
+  'panel.type': 'Type',
+  'panel.phase': 'Phase',
+  'panel.cable': 'Cable',
+  'panel.description': 'Description',
+  'panel.rcd': 'RCD',
+  'panel.print': 'Print',
+  'panel.fillFromPhoto': 'Fill from photo',
+  'panel.addRow': 'Add row',
+  'panel.deleteSchedule': 'Delete schedule',
+  'panel.noSchedules': 'No panel schedules yet.',
+  'panel.analyzing': 'Analyzing panel schedule...',
+  'panel.name': 'Schedule name',
+  'panel.scheduleName': 'E.g. Main panel',
+  'settings.company': 'Company',
+  'settings.companyName': 'Company name',
+  'settings.companyWebsite': 'Website',
+  'settings.companyLogo': 'Logo',
+  'settings.fetchLogo': 'Fetch logo',
+  'settings.uploadLogo': 'Upload',
+  'settings.removeLogo': 'Remove',
 } as const;
 
 export type TranslationKey = keyof typeof en;

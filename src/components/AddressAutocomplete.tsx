@@ -16,6 +16,9 @@ interface PhotonProperties {
 
 interface PhotonFeature {
   properties: PhotonProperties;
+  geometry?: {
+    coordinates: [number, number]; // [lon, lat]
+  };
 }
 
 interface PhotonResponse {
@@ -41,11 +44,12 @@ function formatResult(p: PhotonProperties, userQuery?: string): string {
 interface AddressAutocompleteProps {
   value: string;
   onChange: (value: string) => void;
+  onCoordinates?: (lat: number, lon: number) => void;
   placeholder?: string;
   className?: string;
 }
 
-export default function AddressAutocomplete({ value, onChange, placeholder, className }: AddressAutocompleteProps) {
+export default function AddressAutocomplete({ value, onChange, onCoordinates, placeholder, className }: AddressAutocompleteProps) {
   const [suggestions, setSuggestions] = useState<PhotonFeature[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const [activeIndex, setActiveIndex] = useState(-1);
@@ -74,8 +78,14 @@ export default function AddressAutocomplete({ value, onChange, placeholder, clas
 
     debounceRef.current = setTimeout(async () => {
       try {
+        // Strip house number suffix (e.g. "2b") for search — Photon handles street names better without it
+        // We'll inject the house number back into the formatted result on select
+        // Extract house number suffix if present (e.g. "2b" from "ernst ahlgensgatan 2b")
+        const houseMatch = query.match(/\s+(\d+\s*[a-zA-Z]?)\s*$/);
+        const searchQuery = houseMatch ? query.replace(/\s+\d+\s*[a-zA-Z]?\s*$/, '').trim() : query;
+
         const params = new URLSearchParams({
-          q: query,
+          q: searchQuery,
           limit: '5',
           lat: '62.0',
           lon: '15.0',
@@ -86,9 +96,9 @@ export default function AddressAutocomplete({ value, onChange, placeholder, clas
         const data: PhotonResponse = await res.json();
 
         // Filter to Swedish results
-        const swedish = data.features.filter(
-          (f) => f.properties.country === 'Sweden' || f.properties.state?.includes('County'),
-        );
+        const isSwedish = (f: PhotonFeature) =>
+          f.properties.country === 'Sweden' || f.properties.country === 'Sverige' || f.properties.state?.includes('County');
+        const swedish = data.features.filter(isSwedish);
         const results = swedish.length > 0 ? swedish : data.features;
 
         setSuggestions(results.slice(0, 5));
@@ -102,6 +112,10 @@ export default function AddressAutocomplete({ value, onChange, placeholder, clas
 
   const handleSelect = (feature: PhotonFeature) => {
     onChange(formatResult(feature.properties, queryRef.current));
+    if (onCoordinates && feature.geometry?.coordinates) {
+      const [lon, lat] = feature.geometry.coordinates;
+      onCoordinates(lat, lon);
+    }
     setShowDropdown(false);
     setSuggestions([]);
   };

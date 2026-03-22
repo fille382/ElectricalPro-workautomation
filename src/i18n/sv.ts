@@ -215,6 +215,32 @@ const sv: Translations = {
   'shopping.empty': 'Ingen inköpslista ännu.',
   'shopping.askAI': 'Be AI:n skapa en inköpslista från dina uppgifter.',
   'shopping.bought': 'Köpt',
-};
+
+  // Panel Schedule
+  'panel.title': 'Gruppschema',
+  'panel.addSchedule': '+ Nytt schema',
+  'panel.group': 'Grupp',
+  'panel.breaker': 'Säkring',
+  'panel.type': 'Typ',
+  'panel.phase': 'Fas',
+  'panel.cable': 'Kabel',
+  'panel.description': 'Beskrivning',
+  'panel.rcd': 'JFB',
+  'panel.print': 'Skriv ut',
+  'panel.fillFromPhoto': 'Fyll i från foto',
+  'panel.addRow': 'Lägg till rad',
+  'panel.deleteSchedule': 'Ta bort schema',
+  'panel.noSchedules': 'Inga gruppscheman ännu.',
+  'panel.analyzing': 'Analyserar gruppschema...',
+  'panel.name': 'Schemanamn',
+  'panel.scheduleName': 'T.ex. Huvudcentral',
+  'settings.company': 'Företag',
+  'settings.companyName': 'Företagsnamn',
+  'settings.companyWebsite': 'Webbplats',
+  'settings.companyLogo': 'Logotyp',
+  'settings.fetchLogo': 'Hämta logga',
+  'settings.uploadLogo': 'Ladda upp',
+  'settings.removeLogo': 'Ta bort',
+} satisfies Translations;
 
 export default sv;

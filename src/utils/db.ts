@@ -1,7 +1,7 @@
-import type { Job, Task, Photo, AppSettings, SavedContact, JobContact, ChatMessage, KnowledgeEntry, ShoppingItem } from '../types';
+import type { Job, Task, Photo, AppSettings, SavedContact, JobContact, ChatMessage, KnowledgeEntry, ShoppingItem, PanelSchedule } from '../types';
 
 const DB_NAME = 'electrician_app';
-const DB_VERSION = 5;
+const DB_VERSION = 6;
 
 let db: IDBDatabase | null = null;
 
@@ -70,6 +70,12 @@ export async function initDB(): Promise<IDBDatabase> {
       if (!database.objectStoreNames.contains('shopping_list')) {
         const shopStore = database.createObjectStore('shopping_list', { keyPath: 'id' });
         shopStore.createIndex('job_id', 'job_id', { unique: false });
+      }
+
+      // Create panel schedules store
+      if (!database.objectStoreNames.contains('panel_schedules')) {
+        const panelStore = database.createObjectStore('panel_schedules', { keyPath: 'id' });
+        panelStore.createIndex('job_id', 'job_id', { unique: false });
       }
     };
   });
@@ -609,6 +615,63 @@ export async function deleteShoppingItem(id: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const tx = database.transaction(['shopping_list'], 'readwrite');
     const request = tx.objectStore('shopping_list').delete(id);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve();
+  });
+}
+
+// ========== PANEL SCHEDULE OPERATIONS ==========
+
+export async function getPanelSchedules(jobId: string): Promise<PanelSchedule[]> {
+  const database = await getDB();
+  return new Promise((resolve, reject) => {
+    const tx = database.transaction(['panel_schedules'], 'readonly');
+    const index = tx.objectStore('panel_schedules').index('job_id');
+    const request = index.getAll(jobId);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result);
+  });
+}
+
+export async function addPanelSchedule(data: Omit<PanelSchedule, 'id' | 'created_at' | 'updated_at'>): Promise<PanelSchedule> {
+  const database = await getDB();
+  const schedule: PanelSchedule = {
+    ...data,
+    id: `ps_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    created_at: Date.now(),
+    updated_at: Date.now(),
+  };
+  return new Promise((resolve, reject) => {
+    const tx = database.transaction(['panel_schedules'], 'readwrite');
+    const request = tx.objectStore('panel_schedules').add(schedule);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(schedule);
+  });
+}
+
+export async function updatePanelSchedule(id: string, updates: Partial<PanelSchedule>): Promise<void> {
+  const database = await getDB();
+  return new Promise((resolve, reject) => {
+    const tx = database.transaction(['panel_schedules'], 'readwrite');
+    const store = tx.objectStore('panel_schedules');
+    const getReq = store.get(id);
+    getReq.onerror = () => reject(getReq.error);
+    getReq.onsuccess = () => {
+      const existing = getReq.result;
+      if (!existing) { reject(new Error('Panel schedule not found')); return; }
+      const updated = { ...existing, ...updates, id, updated_at: Date.now() };
+      const putReq = store.put(updated);
+      putReq.onerror = () => reject(putReq.error);
+      putReq.onsuccess = () => resolve();
+    };
+  });
+}
+
+export async function deletePanelSchedule(id: string): Promise<void> {
+  const database = await getDB();
+  return new Promise((resolve, reject) => {
+    const tx = database.transaction(['panel_schedules'], 'readwrite');
+    const request = tx.objectStore('panel_schedules').delete(id);
     request.onerror = () => reject(request.error);
     request.onsuccess = () => resolve();
   });
