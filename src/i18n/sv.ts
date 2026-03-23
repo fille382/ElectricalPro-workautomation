@@ -241,6 +241,43 @@ const sv: Translations = {
   'settings.fetchLogo': 'Hämta logga',
   'settings.uploadLogo': 'Ladda upp',
   'settings.removeLogo': 'Ta bort',
+
+  // Login
+  'login.subtitle': 'Synka ditt arbete mellan enheter',
+  'login.serverUrl': 'PocketBase server-URL',
+  'login.connect': 'Anslut',
+  'login.connected': 'Ansluten',
+  'login.connectionFailed': 'Kunde inte ansluta till servern. Kontrollera URL:en.',
+  'login.signInWithGoogle': 'Logga in med Google',
+  'login.signingIn': 'Loggar in...',
+  'login.loginFailed': 'Inloggningen misslyckades. Försök igen.',
+  'login.continueOffline': 'Fortsätt utan synk',
+
+  // Sync & Account
+  'settings.sync': 'Synk & Konto',
+  'settings.pbUrl': 'PocketBase URL',
+  'settings.syncStatus': 'Status',
+  'settings.syncNow': 'Synka nu',
+  'settings.loggedInAs': 'Inloggad som',
+  'settings.logout': 'Logga ut',
+  'settings.loginToSync': 'Logga in för att synka',
+  'sync.synced': 'Synkad',
+  'sync.syncing': 'Synkar...',
+  'sync.offline': 'Offline',
+  'sync.error': 'Synkfel',
+  'sync.unconfigured': 'Ej konfigurerad',
+
+  // Sharing
+  'share.title': 'Dela jobb',
+  'share.emailPlaceholder': 'Kollegans email',
+  'share.role': 'Roll',
+  'share.viewer': 'Kan visa',
+  'share.editor': 'Kan redigera',
+  'share.share': 'Dela',
+  'share.sharedWith': 'Delad med',
+  'share.remove': 'Ta bort',
+  'share.userNotFound': 'Användaren hittades inte. De behöver skapa ett konto först.',
+  'share.sharedWithMe': 'Delade med mig',
 } satisfies Translations;
 
 export default sv;

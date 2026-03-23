@@ -1,9 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useJobs, useSavedContacts } from '../hooks/useIndexedDB';
 import { saveContactsFromJob } from '../utils/db';
 import { useTranslation } from '../contexts/I18nContext';
+import { useAuth } from '../contexts/AuthContext';
+import { getPBSync } from '../utils/pocketbase';
 import JobForm from '../components/JobForm';
 import MapTileBackground from '../components/MapTileBackground';
 
@@ -15,7 +17,30 @@ export default function HomePage({ apiKey }: HomePageProps) {
   const { jobs, loading, createJob } = useJobs();
   const { savedContacts, refresh: refreshContacts } = useSavedContacts();
   const { t } = useTranslation();
+  const { isAuthenticated, isOnline } = useAuth();
   const [showForm, setShowForm] = useState(false);
+  const [sharedJobCount, setSharedJobCount] = useState(0);
+
+  // Load shared job count when authenticated
+  useEffect(() => {
+    if (!isAuthenticated || !isOnline) {
+      setSharedJobCount(0);
+      return;
+    }
+    const pb = getPBSync();
+    if (!pb) return;
+
+    (async () => {
+      try {
+        const result = await pb.collection('job_shares').getList(1, 1, {
+          filter: `user_id = "${pb.authStore.record?.id}"`,
+        });
+        setSharedJobCount(result.totalItems);
+      } catch {
+        // Silently ignore - PB might not have this collection yet
+      }
+    })();
+  }, [isAuthenticated, isOnline]);
 
   const handleCreateJob = async (jobData: any) => {
     try {
@@ -136,6 +161,22 @@ export default function HomePage({ apiKey }: HomePageProps) {
           </div>
         )}
       </div>
+
+      {isAuthenticated && sharedJobCount > 0 && (
+        <div className="mb-8">
+          <h2 className="text-xl font-bold text-blue-900 dark:text-gray-100 mb-4">
+            {t('share.sharedWithMe')} ({sharedJobCount})
+          </h2>
+          <div className="card text-center py-8">
+            <svg className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            <p className="text-gray-500 dark:text-gray-400 text-sm">
+              {sharedJobCount} {sharedJobCount === 1 ? 'job' : 'jobs'}
+            </p>
+          </div>
+        </div>
+      )}
 
       {completedJobs.length > 0 && (
         <div>

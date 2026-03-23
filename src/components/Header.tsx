@@ -1,6 +1,7 @@
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useTranslation } from '../contexts/I18nContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAuth } from '../contexts/AuthContext';
 
 interface HeaderProps {
   apiKey: string | null;
@@ -9,6 +10,28 @@ interface HeaderProps {
 export default function Header({ apiKey }: HeaderProps) {
   const { t } = useTranslation();
   const { theme, themeSetting, setTheme } = useTheme();
+  const { syncStatus, isAuthenticated } = useAuth();
+  const navigate = useNavigate();
+
+  const syncDotColor = (() => {
+    switch (syncStatus) {
+      case 'synced': return 'bg-green-500';
+      case 'syncing': return 'bg-yellow-400 animate-pulse';
+      case 'offline': return 'bg-orange-500';
+      case 'error': return 'bg-red-500';
+      default: return '';
+    }
+  })();
+
+  const syncLabel = (() => {
+    switch (syncStatus) {
+      case 'synced': return t('sync.synced');
+      case 'syncing': return t('sync.syncing');
+      case 'offline': return t('sync.offline');
+      case 'error': return t('sync.error');
+      default: return t('sync.unconfigured');
+    }
+  })();
 
   const cycleTheme = () => {
     const next = themeSetting === 'system' ? 'light' : themeSetting === 'light' ? 'dark' : 'system';
@@ -32,6 +55,16 @@ export default function Header({ apiKey }: HeaderProps) {
             <Link to="/" className="text-sm md:text-base hover:opacity-80 transition-opacity">
               {t('header.jobs')}
             </Link>
+            {syncStatus !== 'unconfigured' && (
+              <button
+                onClick={() => navigate(isAuthenticated ? '/settings' : '/login')}
+                className="flex items-center gap-1.5 p-2 rounded-lg hover:bg-blue-700 dark:hover:bg-gray-700 md:hover:bg-gray-100 md:dark:hover:bg-gray-700 transition-colors"
+                title={syncLabel}
+              >
+                <span className={`w-2.5 h-2.5 rounded-full ${syncDotColor}`} />
+              </button>
+            )}
+
             <Link
               to="/settings"
               className="flex items-center gap-1 text-sm md:text-base hover:opacity-80 transition-opacity"

@@ -6,9 +6,11 @@ import { seedKnowledgeBase } from './utils/knowledgeBase';
 import { I18nProvider } from './contexts/I18nContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { DebugLogProvider } from './contexts/DebugLogContext';
+import { AuthProvider } from './contexts/AuthContext';
 import HomePage from './pages/HomePage';
 import JobDetailPage from './pages/JobDetailPage';
 import SettingsPage from './pages/SettingsPage';
+import LoginPage from './pages/LoginPage';
 import Header from './components/Header';
 import DebugPanel from './components/DebugPanel';
 import './App.css';
@@ -70,6 +72,7 @@ function App() {
   }
 
   return (
+    <AuthProvider>
     <DebugLogProvider>
       <I18nProvider
         initialLanguage={initialLanguage}
@@ -93,6 +96,7 @@ function App() {
                   <Route path="/" element={<HomePage apiKey={apiKey} />} />
                   <Route path="/job/:jobId" element={<JobDetailPage apiKey={apiKey} />} />
                   <Route path="/settings" element={<SettingsPage apiKey={apiKey} onApiKeyChange={handleApiKeyChange} />} />
+                  <Route path="/login" element={<LoginPage />} />
                 </Routes>
               </main>
               <Toaster position="bottom-center" />
@@ -102,6 +106,7 @@ function App() {
         </ThemeProvider>
       </I18nProvider>
     </DebugLogProvider>
+    </AuthProvider>
   );
 }
 
