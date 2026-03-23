@@ -802,8 +802,8 @@ ${language === 'sv' ? 'IMPORTANT: Write your ENTIRE response in Swedish (svenska
 export async function analyzePanelSchedule(
   imageBlob: Blob,
   apiKey: string,
-  language: string
-): Promise<{ name: string; rows: Array<{ group_number: number; breaker_size: string; breaker_type: string; phase: string; cable_type: string; description: string; rcd: string }> }> {
+  _language: string
+): Promise<{ name: string; fault_contact?: string; rows: Array<{ group_number: number; breaker_size: string; breaker_type: string; phase: string; cable_type: string; description: string; rcd: string }> }> {
   // Compress and convert to base64 (reuse existing pattern from analyzeElectricalPanel)
   const canvas = document.createElement('canvas');
   const img = new Image();
