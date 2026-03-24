@@ -115,7 +115,8 @@ export function AuthProvider({ children }: AuthProviderProps) {
   const setPbUrl = useCallback(async (url: string): Promise<boolean> => {
     const reachable = await testConnection(url);
     if (reachable) {
-      await saveSettings({ pocketbase_url: url });
+      const currentSettings = await getSettings();
+      await saveSettings({ ...currentSettings, pocketbase_url: url });
       setPbUrlState(url);
       setSyncStatus('offline'); // configured but not logged in yet
       return true;

@@ -66,12 +66,10 @@ export async function getPB(): Promise<PocketBase | null> {
       return { url, options };
     };
     // Disable realtime SSE - tunnels don't support long-lived EventSource connections
-    // OAuth2 uses realtime internally, so we stub the connect method
     try {
-      pbInstance.realtime.disconnect();
+      (pbInstance.realtime as any).disconnect();
     } catch {}
-    const origConnect = pbInstance.realtime.connect.bind(pbInstance.realtime);
-    pbInstance.realtime.connect = async () => {};
+    (pbInstance.realtime as any).connect = async () => {};
     pbUrl = url;
 
     // Restore auth token if we have one
@@ -84,7 +82,7 @@ export async function getPB(): Promise<PocketBase | null> {
       } catch {
         // Token expired or invalid, clear it
         pbInstance.authStore.clear();
-        await saveSettings({ pb_auth_token: undefined, pb_user_id: undefined, pb_user_email: undefined, pb_user_name: undefined });
+        await saveSettings({ ...settings, pb_auth_token: undefined, pb_user_id: undefined, pb_user_email: undefined, pb_user_name: undefined });
       }
     }
   }
@@ -186,7 +184,7 @@ export async function authWithGoogle(): Promise<{ id: string; email: string; nam
         clearTimeout(timeout);
         clearInterval(interval);
         window.removeEventListener('message', onMessage);
-        try { popup.close(); } catch {}
+        try { popup?.close(); } catch {}
       }
     });
 
@@ -199,7 +197,9 @@ export async function authWithGoogle(): Promise<{ id: string; email: string; nam
     );
     const user = authData.record;
 
+    const currentSettings = await getSettings();
     await saveSettings({
+      ...currentSettings,
       pb_auth_token: pb.authStore.token,
       pb_user_id: user.id,
       pb_user_email: user.email,

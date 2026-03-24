@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { Toaster } from 'react-hot-toast';
+import { Toaster, toast } from 'react-hot-toast';
 import * as db from './utils/db';
 import { seedKnowledgeBase } from './utils/knowledgeBase';
 import { I18nProvider } from './contexts/I18nContext';
