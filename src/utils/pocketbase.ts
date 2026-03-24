@@ -65,6 +65,9 @@ export async function getPB(): Promise<PocketBase | null> {
       (options.headers as Record<string, string>)['ngrok-skip-browser-warning'] = 'true';
       return { url, options };
     };
+    // Disable realtime SSE auto-connect (ngrok free returns HTML for SSE)
+    // Our OAuth flow uses localStorage polling instead, so SSE is not needed
+    (pbInstance.realtime as any).connect = async () => {};
     pbUrl = url;
 
     // Restore auth token if we have one
