@@ -128,6 +128,20 @@ async function pushRecord(item: SyncQueueItem): Promise<void> {
 
   // Prepare data for PocketBase (strip local-only fields)
   const data = preparePBData(item.collection, localRecord);
+
+  // Resolve job relation for child collections
+  const childCollections = ['tasks', 'photos', 'shopping_items', 'panel_schedules', 'chat_messages'];
+  if (childCollections.includes(item.collection) && localRecord.job_id) {
+    // Look up the parent job's PB ID
+    const parentJob = await getLocalRecord('jobs', localRecord.job_id);
+    if (parentJob?.pb_id) {
+      data.job = parentJob.pb_id;
+    } else {
+      console.warn(`[Sync] Parent job ${localRecord.job_id} has no pb_id, skipping ${item.collection}/${item.local_id}`);
+      return;
+    }
+  }
+
   console.log(`[Sync] Pushing ${item.collection}/${item.local_id}:`, JSON.stringify(data).slice(0, 500));
 
   if (localRecord.pb_id) {
