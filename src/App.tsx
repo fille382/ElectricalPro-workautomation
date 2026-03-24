@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
-import { HashRouter as Router, Routes, Route } from 'react-router-dom';
-import { Toaster, toast } from 'react-hot-toast';
+import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { Toaster } from 'react-hot-toast';
 import * as db from './utils/db';
 import { seedKnowledgeBase } from './utils/knowledgeBase';
 import { I18nProvider } from './contexts/I18nContext';
 import { ThemeProvider } from './contexts/ThemeContext';
 import { DebugLogProvider } from './contexts/DebugLogContext';
-import { AuthProvider } from './contexts/AuthContext';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { isEnvConfigured } from './utils/pocketbase';
 import HomePage from './pages/HomePage';
 import JobDetailPage from './pages/JobDetailPage';
 import SettingsPage from './pages/SettingsPage';
@@ -14,6 +15,15 @@ import LoginPage from './pages/LoginPage';
 import Header from './components/Header';
 import DebugPanel from './components/DebugPanel';
 import './App.css';
+
+function RequireAuth({ children }: { children: React.ReactElement }) {
+  const { isAuthenticated } = useAuth();
+  // Only require auth if PocketBase is configured (env var set)
+  if (isEnvConfigured() && !isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+  return children;
+}
 
 function App() {
   const [apiKey, setApiKey] = useState<string | null>(null);
@@ -93,9 +103,9 @@ function App() {
               <Header apiKey={apiKey} />
               <main className="pb-20 md:pb-0">
                 <Routes>
-                  <Route path="/" element={<HomePage apiKey={apiKey} />} />
-                  <Route path="/job/:jobId" element={<JobDetailPage apiKey={apiKey} />} />
-                  <Route path="/settings" element={<SettingsPage apiKey={apiKey} onApiKeyChange={handleApiKeyChange} />} />
+                  <Route path="/" element={<RequireAuth><HomePage apiKey={apiKey} /></RequireAuth>} />
+                  <Route path="/job/:jobId" element={<RequireAuth><JobDetailPage apiKey={apiKey} /></RequireAuth>} />
+                  <Route path="/settings" element={<RequireAuth><SettingsPage apiKey={apiKey} onApiKeyChange={handleApiKeyChange} /></RequireAuth>} />
                   <Route path="/login" element={<LoginPage />} />
                 </Routes>
               </main>

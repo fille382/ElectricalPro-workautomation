@@ -18,6 +18,7 @@ interface AuthContextValue {
   pbUrl: string | null;
   login: () => Promise<boolean>;
   logout: () => Promise<void>;
+  refreshAuth: () => Promise<void>;
   setPbUrl: (url: string) => Promise<boolean>;
   setSyncStatus: (status: SyncStatus) => void;
 }
@@ -103,6 +104,14 @@ export function AuthProvider({ children }: AuthProviderProps) {
     setSyncStatus(pbUrl ? 'offline' : 'unconfigured');
   }, [pbUrl]);
 
+  const refreshAuth = useCallback(async () => {
+    const authUser = await getAuthUser();
+    if (authUser) {
+      setUser(authUser);
+      setSyncStatus('synced');
+    }
+  }, []);
+
   const setPbUrl = useCallback(async (url: string): Promise<boolean> => {
     const reachable = await testConnection(url);
     if (reachable) {
@@ -123,6 +132,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
       pbUrl,
       login,
       logout,
+      refreshAuth,
       setPbUrl,
       setSyncStatus,
     }}>

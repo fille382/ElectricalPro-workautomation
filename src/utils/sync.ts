@@ -84,7 +84,9 @@ async function processSyncQueue(): Promise<void> {
     try {
       await pushRecord(item);
     } catch (err) {
-      console.warn(`[Sync] Failed to push ${item.collection}/${item.local_id}:`, err);
+      // Log detailed error data for debugging
+      const pbErr = err as { data?: Record<string, unknown>; response?: Record<string, unknown> };
+      console.warn(`[Sync] Failed to push ${item.collection}/${item.local_id}:`, err, 'Data:', pbErr?.data || pbErr?.response);
       item.retries++;
       if (item.retries < 5) {
         failed.push(item);
@@ -127,6 +129,7 @@ async function pushRecord(item: SyncQueueItem): Promise<void> {
 
   // Prepare data for PocketBase (strip local-only fields)
   const data = preparePBData(item.collection, localRecord);
+  console.log(`[Sync] Pushing ${item.collection}/${item.local_id}:`, JSON.stringify(data).slice(0, 500));
 
   if (localRecord.pb_id) {
     // Update existing record
@@ -280,27 +283,88 @@ function mapCollectionName(local: string): string {
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function preparePBData(collection: string, record: any): Record<string, unknown> {
-  // Strip local-only fields and convert to PB format
-  const { id, pb_id, _dirty, _deleted, image_data, ...rest } = record;
+  // Start with only the fields PocketBase expects
+  const data: Record<string, unknown> = {};
+  const pb = getPBSync();
+  const userId = pb?.authStore?.record?.id;
 
-  // Convert nested objects to JSON strings for PB
-  if (collection === 'jobs' && rest.contacts) {
-    rest.contacts = JSON.stringify(rest.contacts);
-  }
-  if (collection === 'panel_schedules' && rest.rows) {
-    rest.rows = JSON.stringify(rest.rows);
-  }
-  if (collection === 'knowledge_base' && rest.keywords) {
-    rest.keywords = JSON.stringify(rest.keywords);
-  }
-  if (collection === 'saved_contacts' && rest.addresses) {
-    rest.addresses = JSON.stringify(rest.addresses);
-  }
-  if (collection === 'photos' && rest.extracted_info) {
-    rest.extracted_info = JSON.stringify(rest.extracted_info);
+  // Set owner for collections that have it
+  if (userId && ['jobs', 'saved_contacts', 'knowledge_base'].includes(collection)) {
+    data.owner = userId;
   }
 
-  return rest;
+  // Map fields per collection
+  switch (collection) {
+    case 'jobs':
+      data.name = record.name;
+      data.address = record.address || '';
+      data.description = record.description || '';
+      data.contacts = record.contacts ? JSON.stringify(record.contacts) : '[]';
+      data.lat = record.lat || 0;
+      data.lon = record.lon || 0;
+      data.status = record.status || 'active';
+      break;
+
+    case 'tasks':
+      data.title = record.title;
+      data.description = record.description || '';
+      data.status = record.status || 'pending';
+      data.notes = record.notes || '';
+      data.source_photo_id = record.source_photo_id || '';
+      data.parent_task_id = record.parent_task_id || '';
+      // job relation — needs PB ID of parent job, resolved below
+      break;
+
+    case 'photos':
+      data.task_id = record.task_id || '';
+      data.image_hash = record.image_hash || '';
+      data.extracted_info = record.extracted_info ? JSON.stringify(record.extracted_info) : '{}';
+      data.user_notes = record.user_notes || '';
+      break;
+
+    case 'saved_contacts':
+      data.name = record.name;
+      data.phone = record.phone || '';
+      data.email = record.email || '';
+      data.role = record.role || '';
+      data.addresses = record.addresses ? JSON.stringify(record.addresses) : '[]';
+      break;
+
+    case 'chat_messages':
+      data.role = record.role;
+      data.content = record.content;
+      break;
+
+    case 'shopping_list':
+      data.name = record.name;
+      data.e_number = record.e_number || '';
+      data.article_number = record.article_number || '';
+      data.manufacturer = record.manufacturer || '';
+      data.category = record.category || '';
+      data.quantity = record.quantity || 1;
+      data.unit = record.unit || 'st';
+      data.checked = record.checked || false;
+      data.parent_item_id = record.parent_item_id || '';
+      break;
+
+    case 'panel_schedules':
+      data.name = record.name;
+      data.rows = record.rows ? JSON.stringify(record.rows) : '[]';
+      data.fault_contact = record.fault_contact || '';
+      data.source_photo_id = record.source_photo_id || '';
+      break;
+
+    case 'knowledge_base':
+      data.question = record.question || '';
+      data.keywords = record.keywords ? JSON.stringify(record.keywords) : '[]';
+      data.answer = record.answer || '';
+      data.category = record.category || '';
+      data.source = record.source || 'ai';
+      data.useCount = record.useCount || 0;
+      break;
+  }
+
+  return data;
 }
 
 // These functions interact with IndexedDB and need to be imported from db.ts
@@ -308,63 +372,83 @@ function preparePBData(collection: string, record: any): Record<string, unknown>
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function getLocalRecord(collection: string, localId: string): Promise<any> {
-  // Dynamic import to avoid circular dependency
   const db = await import('./db');
   const dbInstance = await db.getDB();
-  const tx = dbInstance.transaction(collection, 'readonly');
-  const store = tx.objectStore(collection);
-  return store.get(localId);
+  return new Promise((resolve, reject) => {
+    const tx = dbInstance.transaction(collection, 'readonly');
+    const store = tx.objectStore(collection);
+    const request = store.get(localId);
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
 }
 
 async function updateLocalPBId(collection: string, localId: string, pbId: string): Promise<void> {
   const db = await import('./db');
   const dbInstance = await db.getDB();
-  const tx = dbInstance.transaction(collection, 'readwrite');
-  const store = tx.objectStore(collection);
-  const record = await store.get(localId);
-  if (record) {
-    record.pb_id = pbId;
-    record._dirty = false;
-    await store.put(record);
-  }
-  await tx.done;
+  return new Promise((resolve, reject) => {
+    const tx = dbInstance.transaction(collection, 'readwrite');
+    const store = tx.objectStore(collection);
+    const getReq = store.get(localId);
+    getReq.onsuccess = () => {
+      const record = getReq.result;
+      if (record) {
+        record.pb_id = pbId;
+        record._dirty = false;
+        store.put(record);
+      }
+      resolve();
+    };
+    getReq.onerror = () => reject(getReq.error);
+  });
 }
 
 async function clearDirtyFlag(collection: string, localId: string): Promise<void> {
   const db = await import('./db');
   const dbInstance = await db.getDB();
-  const tx = dbInstance.transaction(collection, 'readwrite');
-  const store = tx.objectStore(collection);
-  const record = await store.get(localId);
-  if (record) {
-    record._dirty = false;
-    await store.put(record);
-  }
-  await tx.done;
+  return new Promise((resolve, reject) => {
+    const tx = dbInstance.transaction(collection, 'readwrite');
+    const store = tx.objectStore(collection);
+    const getReq = store.get(localId);
+    getReq.onsuccess = () => {
+      const record = getReq.result;
+      if (record) {
+        record._dirty = false;
+        store.put(record);
+      }
+      resolve();
+    };
+    getReq.onerror = () => reject(getReq.error);
+  });
 }
 
 async function deleteLocalByPBId(collection: string, pbId: string): Promise<void> {
   const db = await import('./db');
   const dbInstance = await db.getDB();
-  const tx = dbInstance.transaction(collection, 'readwrite');
-  const store = tx.objectStore(collection);
-  const allRecords = await store.getAll();
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const match = allRecords.find((r: any) => r.pb_id === pbId);
-  if (match) {
-    await store.delete(match.id);
-  }
-  await tx.done;
+  return new Promise((resolve, reject) => {
+    const tx = dbInstance.transaction(collection, 'readwrite');
+    const store = tx.objectStore(collection);
+    const getAllReq = store.getAll();
+    getAllReq.onsuccess = () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const match = getAllReq.result.find((r: any) => r.pb_id === pbId);
+      if (match) store.delete(match.id);
+      resolve();
+    };
+    getAllReq.onerror = () => reject(getAllReq.error);
+  });
 }
 
 async function upsertLocalFromPB(collection: string, pbRecord: Record<string, unknown>): Promise<void> {
   const db = await import('./db');
   const dbInstance = await db.getDB();
-  const tx = dbInstance.transaction(collection, 'readwrite');
-  const store = tx.objectStore(collection);
-
-  // Find existing record by pb_id
-  const allRecords = await store.getAll();
+  const allRecords = await new Promise<any[]>((resolve, reject) => {
+    const tx = dbInstance.transaction(collection, 'readonly');
+    const store = tx.objectStore(collection);
+    const req = store.getAll();
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const existing = allRecords.find((r: any) => r.pb_id === pbRecord.id);
 
@@ -372,22 +456,28 @@ async function upsertLocalFromPB(collection: string, pbRecord: Record<string, un
   const localData = convertPBToLocal(collection, pbRecord);
 
   if (existing) {
-    // Conflict resolution: last-write-wins
     const existingTime = existing.updated_at || existing.created_at || 0;
     const pbTime = new Date(pbRecord.updated as string || pbRecord.created as string).getTime();
 
     if (pbTime > existingTime && !existing._dirty) {
-      // PB record is newer and local hasn't been modified — update local
-      await store.put({ ...existing, ...localData, pb_id: pbRecord.id as string, _dirty: false });
+      await new Promise<void>((resolve, reject) => {
+        const tx = dbInstance.transaction(collection, 'readwrite');
+        const store = tx.objectStore(collection);
+        const req = store.put({ ...existing, ...localData, pb_id: pbRecord.id as string, _dirty: false });
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject(req.error);
+      });
     }
-    // If local is dirty (has pending changes), keep local version — it will be pushed later
   } else {
-    // New record from PB — create locally
     const newId = `${collection.replace('_', '')}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
-    await store.put({ ...localData, id: newId, pb_id: pbRecord.id as string, _dirty: false });
+    await new Promise<void>((resolve, reject) => {
+      const tx = dbInstance.transaction(collection, 'readwrite');
+      const store = tx.objectStore(collection);
+      const req = store.put({ ...localData, id: newId, pb_id: pbRecord.id as string, _dirty: false });
+      req.onsuccess = () => resolve();
+      req.onerror = () => reject(req.error);
+    });
   }
-
-  await tx.done;
 }
 
 function convertPBToLocal(collection: string, pbRecord: Record<string, unknown>): Record<string, unknown> {

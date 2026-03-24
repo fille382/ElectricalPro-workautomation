@@ -2,15 +2,17 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTranslation } from '../contexts/I18nContext';
+import { isEnvConfigured } from '../utils/pocketbase';
 
 export default function LoginPage() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { login, setPbUrl, pbUrl, isAuthenticated } = useAuth();
+  const envConfigured = isEnvConfigured();
   const [url, setUrl] = useState(pbUrl || '');
   const [testing, setTesting] = useState(false);
   const [loggingIn, setLoggingIn] = useState(false);
-  const [connected, setConnected] = useState(!!pbUrl);
+  const [connected, setConnected] = useState(!!pbUrl || envConfigured);
   const [error, setError] = useState('');
 
   // Already logged in — redirect
@@ -61,35 +63,37 @@ export default function LoginPage() {
           <p className="text-gray-500 dark:text-gray-400 mt-1">{t('login.subtitle')}</p>
         </div>
 
-        {/* Step 1: PocketBase URL */}
-        <div className="mb-6">
-          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-            {t('login.serverUrl')}
-          </label>
-          <div className="flex gap-2">
-            <input
-              type="url"
-              value={url}
-              onChange={(e) => { setUrl(e.target.value); setConnected(false); setError(''); }}
-              placeholder="https://your-server.trycloudflare.com"
-              className="input flex-1"
-              disabled={connected}
-            />
-            <button
-              onClick={connected ? () => { setConnected(false); setUrl(''); } : handleConnect}
-              disabled={testing || (!connected && !url.trim())}
-              className={`px-4 py-2 rounded-lg font-medium text-sm whitespace-nowrap ${
-                connected
-                  ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
-                  : 'bg-blue-600 text-white hover:bg-blue-700'
-              }`}
-            >
-              {testing ? '...' : connected ? '✓ ' + t('login.connected') : t('login.connect')}
-            </button>
+        {/* Server URL — only show if NOT configured via env var */}
+        {!envConfigured && (
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              {t('login.serverUrl')}
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="url"
+                value={url}
+                onChange={(e) => { setUrl(e.target.value); setConnected(false); setError(''); }}
+                placeholder="https://your-server.trycloudflare.com"
+                className="input flex-1"
+                disabled={connected}
+              />
+              <button
+                onClick={connected ? () => { setConnected(false); setUrl(''); } : handleConnect}
+                disabled={testing || (!connected && !url.trim())}
+                className={`px-4 py-2 rounded-lg font-medium text-sm whitespace-nowrap ${
+                  connected
+                    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                    : 'bg-blue-600 text-white hover:bg-blue-700'
+                }`}
+              >
+                {testing ? '...' : connected ? '✓ ' + t('login.connected') : t('login.connect')}
+              </button>
+            </div>
           </div>
-        </div>
+        )}
 
-        {/* Step 2: Google Login (only if connected) */}
+        {/* Google Login — show immediately if env configured, otherwise after connect */}
         {connected && (
           <button
             onClick={handleGoogleLogin}

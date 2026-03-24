@@ -23,10 +23,7 @@ export default function SettingsPage({ apiKey, onApiKeyChange }: SettingsPagePro
   const { t, language, languageSetting, setLanguage } = useTranslation();
   const { themeSetting, setTheme } = useTheme();
   const { enabled: debugEnabled, setEnabled: setDebugEnabled } = useDebugLog();
-  const { user, isAuthenticated, syncStatus, pbUrl, login, logout: authLogout, setPbUrl, setSyncStatus } = useAuth();
-  const [tempPbUrl, setTempPbUrl] = useState(pbUrl || '');
-  const [connectingPb, setConnectingPb] = useState(false);
-  const [loggingIn, setLoggingIn] = useState(false);
+  const { user, isAuthenticated, syncStatus, logout: authLogout, setSyncStatus } = useAuth();
 
   // Load company settings on mount
   useEffect(() => {
@@ -34,7 +31,6 @@ export default function SettingsPage({ apiKey, onApiKeyChange }: SettingsPagePro
       setCompanyName(s.company_name || '');
       setCompanyWebsite(s.company_website || '');
       setCompanyLogo(s.company_logo || null);
-      if (s.pocketbase_url) setTempPbUrl(s.pocketbase_url);
     });
   }, []);
 
@@ -178,63 +174,31 @@ export default function SettingsPage({ apiKey, onApiKeyChange }: SettingsPagePro
         </div>
       </div>
 
-      {/* Sync & Account Section */}
-      <div className="card mb-6">
-        <h2 className="text-xl font-bold text-blue-900 dark:text-gray-100 mb-4">{t('settings.sync')}</h2>
-        <div className="space-y-4">
-          {/* PocketBase URL */}
-          <div>
-            <label className="label-text">{t('settings.pbUrl')}</label>
-            <div className="flex gap-2">
-              <input
-                className="input-field flex-1"
-                placeholder="https://your-server.pockethost.io"
-                value={tempPbUrl}
-                onChange={(e) => setTempPbUrl(e.target.value)}
-              />
-              <button
-                onClick={async () => {
-                  if (!tempPbUrl.trim()) return;
-                  setConnectingPb(true);
-                  const ok = await setPbUrl(tempPbUrl.trim());
-                  setConnectingPb(false);
-                  if (ok) {
-                    toast.success(t('login.connected'));
-                  } else {
-                    toast.error(t('login.connectionFailed'));
-                  }
-                }}
-                disabled={connectingPb || !tempPbUrl.trim()}
-                className="btn-primary px-4 disabled:opacity-50"
-              >
-                {connectingPb ? '...' : pbUrl ? t('login.connected') : t('login.connect')}
-              </button>
-            </div>
-          </div>
-
-          {/* Status */}
-          <div className="flex items-center justify-between">
-            <span className="text-sm text-gray-600 dark:text-gray-400">{t('settings.syncStatus')}</span>
-            <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
-              {syncStatus === 'synced' && t('sync.synced')}
-              {syncStatus === 'syncing' && t('sync.syncing')}
-              {syncStatus === 'offline' && t('sync.offline')}
-              {syncStatus === 'error' && t('sync.error')}
-              {syncStatus === 'unconfigured' && t('sync.unconfigured')}
-              {syncStatus === 'idle' && t('sync.synced')}
-            </span>
-          </div>
-
-          {/* Auth state */}
-          {pbUrl && isAuthenticated && user ? (
-            <div className="space-y-3">
-              <div className="flex items-center justify-between p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
-                <div>
-                  <p className="text-sm font-medium text-green-800 dark:text-green-200">
-                    {t('settings.loggedInAs')}
-                  </p>
-                  <p className="text-sm text-green-700 dark:text-green-300">{user.name} ({user.email})</p>
-                </div>
+      {/* Account Section — only show if user is authenticated */}
+      {isAuthenticated && user ? (
+        <div className="card mb-6">
+          <h2 className="text-xl font-bold text-blue-900 dark:text-gray-100 mb-4">{t('settings.sync')}</h2>
+          <div className="space-y-4">
+            {/* User info */}
+            <div className="flex items-center justify-between p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
+              <div>
+                <p className="text-sm font-medium text-green-800 dark:text-green-200">
+                  {user.name}
+                </p>
+                <p className="text-sm text-green-700 dark:text-green-300">{user.email}</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className={`text-xs font-medium px-2 py-1 rounded-full ${
+                  syncStatus === 'synced' || syncStatus === 'idle' ? 'bg-green-200 text-green-800 dark:bg-green-800 dark:text-green-200' :
+                  syncStatus === 'syncing' ? 'bg-yellow-200 text-yellow-800 dark:bg-yellow-800 dark:text-yellow-200' :
+                  syncStatus === 'offline' ? 'bg-orange-200 text-orange-800 dark:bg-orange-800 dark:text-orange-200' :
+                  'bg-red-200 text-red-800 dark:bg-red-800 dark:text-red-200'
+                }`}>
+                  {syncStatus === 'synced' || syncStatus === 'idle' ? t('sync.synced') :
+                   syncStatus === 'syncing' ? t('sync.syncing') :
+                   syncStatus === 'offline' ? t('sync.offline') :
+                   t('sync.error')}
+                </span>
                 <button
                   onClick={async () => {
                     await authLogout();
@@ -245,36 +209,22 @@ export default function SettingsPage({ apiKey, onApiKeyChange }: SettingsPagePro
                   {t('settings.logout')}
                 </button>
               </div>
-              <button
-                onClick={() => {
-                  setSyncStatus('syncing');
-                  // Trigger a sync - for now just set back to synced after a delay
-                  setTimeout(() => setSyncStatus('synced'), 1500);
-                  toast.success(t('settings.syncNow'));
-                }}
-                className="btn-primary w-full"
-              >
-                {t('settings.syncNow')}
-              </button>
             </div>
-          ) : pbUrl ? (
+
+            {/* Sync button */}
             <button
-              onClick={async () => {
-                setLoggingIn(true);
-                const ok = await login();
-                setLoggingIn(false);
-                if (!ok) {
-                  toast.error(t('login.loginFailed'));
-                }
+              onClick={() => {
+                setSyncStatus('syncing');
+                setTimeout(() => setSyncStatus('synced'), 1500);
+                toast.success(t('settings.syncNow'));
               }}
-              disabled={loggingIn}
-              className="btn-primary w-full disabled:opacity-50"
+              className="btn-primary w-full"
             >
-              {loggingIn ? t('login.signingIn') : t('settings.loginToSync')}
+              {t('settings.syncNow')}
             </button>
-          ) : null}
+          </div>
         </div>
-      </div>
+      ) : null}
 
       {/* API Key Section */}
       <div className="card mb-6">

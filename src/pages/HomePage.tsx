@@ -17,7 +17,7 @@ export default function HomePage({ apiKey }: HomePageProps) {
   const { jobs, loading, createJob } = useJobs();
   const { savedContacts, refresh: refreshContacts } = useSavedContacts();
   const { t } = useTranslation();
-  const { isAuthenticated, isOnline } = useAuth();
+  const { isAuthenticated, isOnline, user } = useAuth();
   const [showForm, setShowForm] = useState(false);
   const [sharedJobCount, setSharedJobCount] = useState(0);
 
@@ -30,10 +30,12 @@ export default function HomePage({ apiKey }: HomePageProps) {
     const pb = getPBSync();
     if (!pb) return;
 
+    const userId = pb.authStore.record?.id;
+    if (!userId) return;
     (async () => {
       try {
         const result = await pb.collection('job_shares').getList(1, 1, {
-          filter: `user_id = "${pb.authStore.record?.id}"`,
+          filter: `user = "${userId}"`,
         });
         setSharedJobCount(result.totalItems);
       } catch {
@@ -44,7 +46,7 @@ export default function HomePage({ apiKey }: HomePageProps) {
 
   const handleCreateJob = async (jobData: any) => {
     try {
-      await createJob({
+      const newJob = await createJob({
         ...jobData,
         status: 'active' as const,
       });
@@ -52,6 +54,30 @@ export default function HomePage({ apiKey }: HomePageProps) {
       if (jobData.contacts?.length > 0 && jobData.address) {
         await saveContactsFromJob(jobData.contacts, jobData.address);
         refreshContacts();
+      }
+      // Auto-share with contacts who have emails (after sync pushes the job)
+      if (isAuthenticated && jobData.contacts?.length > 0) {
+        // Wait a bit for sync to push the job, then auto-share
+        setTimeout(async () => {
+          try {
+            const { autoShareWithContacts } = await import('../utils/autoShare');
+            // We need the PB ID — check if it's been synced
+            const db = await import('../utils/db');
+            const jobs = await db.getJobs();
+            const synced = jobs.find(j => j.id === newJob.id);
+            if (synced?.pb_id) {
+              const result = await autoShareWithContacts(synced.pb_id, jobData.contacts, user?.email);
+              if (result.shared.length > 0) {
+                toast.success(`Delad med ${result.shared.join(', ')}`);
+              }
+              if (result.invited.length > 0) {
+                toast(`${result.invited.join(', ')} har inget konto ännu`, { icon: '📧' });
+              }
+            }
+          } catch (err) {
+            console.warn('[AutoShare] Failed:', err);
+          }
+        }, 3000); // Wait 3s for sync to complete
       }
       setShowForm(false);
       toast.success(t('toast.jobCreated'));
