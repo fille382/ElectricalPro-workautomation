@@ -65,13 +65,6 @@ export async function getPB(): Promise<PocketBase | null> {
       (options.headers as Record<string, string>)['ngrok-skip-browser-warning'] = 'true';
       return { url, options };
     };
-    // Disable realtime SSE - tunnels don't support long-lived EventSource connections
-    // Save original connect so OAuth can temporarily re-enable it
-    (pbInstance.realtime as any)._originalConnect = (pbInstance.realtime as any).connect;
-    try {
-      (pbInstance.realtime as any).disconnect();
-    } catch {}
-    (pbInstance.realtime as any).connect = async () => {};
     pbUrl = url;
 
     // Restore auth token if we have one
@@ -135,19 +128,9 @@ export async function authWithGoogle(): Promise<{ id: string; email: string; nam
   if (!pb) throw new Error('PocketBase not configured');
 
   try {
-    // Re-enable realtime temporarily for OAuth (SDK needs it)
-    // Store original and restore after
-    // Restore the real connect so SDK can use it for OAuth
-    if ((pb.realtime as any)._originalConnect) {
-      (pb.realtime as any).connect = (pb.realtime as any)._originalConnect;
-    }
-
     const authData = await pb.collection('users').authWithOAuth2({
       provider: 'google',
     });
-
-    // Re-disable realtime after OAuth
-    (pb.realtime as any).connect = async () => {};
 
     const user = authData.record;
 
