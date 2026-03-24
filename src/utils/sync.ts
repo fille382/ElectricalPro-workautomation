@@ -9,7 +9,6 @@
  */
 
 import { getPBSync } from './pocketbase';
-import { getSettings } from './db';
 import type { SyncQueueItem } from '../types';
 
 // Event bus for notifying UI of sync updates
