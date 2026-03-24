@@ -137,7 +137,6 @@ export async function authWithGoogle(): Promise<{ id: string; email: string; nam
   try {
     // Re-enable realtime temporarily for OAuth (SDK needs it)
     // Store original and restore after
-    const origConnect = (pb.realtime as any).connect;
     // Restore the real connect so SDK can use it for OAuth
     if ((pb.realtime as any)._originalConnect) {
       (pb.realtime as any).connect = (pb.realtime as any)._originalConnect;
