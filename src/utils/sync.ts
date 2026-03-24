@@ -192,6 +192,35 @@ export async function startRealtimeSync(): Promise<void> {
       console.warn(`[Sync] Failed to subscribe to ${pbCollection}:`, err);
     }
   }
+
+  // Subscribe to job_shares — when someone shares a job with us, pull it immediately
+  try {
+    await pb.collection('job_shares').subscribe('*', async (e) => {
+      const userId = pb.authStore.record?.id;
+      if (!userId) return;
+
+      if (e.action === 'create') {
+        const share = e.record;
+        // Check if this share is for us (by user relation or email)
+        const isForUs = share.user === userId ||
+          share.user_email === pb.authStore.record?.email;
+        if (!isForUs) return;
+
+        console.log(`[Sync RT] New job shared with us:`, share.job);
+        // Pull the shared job and all its child data
+        await pullSharedJob(pb, share.job as string, share.role as string);
+        emitSyncUpdate('jobs');
+      } else if (e.action === 'delete') {
+        // Share removed — delete local shared job
+        const share = e.record;
+        await deleteLocalByPBId('jobs', share.job as string);
+        emitSyncUpdate('jobs');
+      }
+    });
+    subscriptions.push(() => pb.collection('job_shares').unsubscribe('*'));
+  } catch (err) {
+    console.warn('[Sync] Failed to subscribe to job_shares:', err);
+  }
 }
 
 /**
@@ -219,6 +248,49 @@ async function handleRealtimeEvent(collection: string, action: string, record: R
 }
 
 /**
+ * Pull a single shared job and all its child data from PocketBase.
+ * Called from fullSync and from realtime job_shares subscription.
+ */
+async function pullSharedJob(pb: any, jobPbId: string, role: string): Promise<void> {
+  try {
+    const jobRecord = await pb.collection('jobs').getOne(jobPbId);
+
+    // Skip if we OWN this job (don't create a duplicate)
+    const currentUserId = pb.authStore.record?.id;
+    if (jobRecord.owner === currentUserId) {
+      console.log(`[Sync] Skipping shared job ${jobRecord.name} — we own it`);
+      return;
+    }
+
+    await upsertLocalFromPB('jobs', {
+      ...jobRecord,
+      _shared: true,
+      _share_role: role,
+    } as unknown as Record<string, unknown>);
+
+    // Fetch child data
+    const childCollections = ['tasks', 'photos', 'shopping_list', 'panel_schedules', 'chat_messages'];
+    for (const childColl of childCollections) {
+      const pbColl = mapCollectionName(childColl);
+      try {
+        const children = await pb.collection(pbColl).getFullList({
+          filter: `job = "${jobPbId}"`,
+        });
+        for (const child of children) {
+          await upsertLocalFromPB(childColl, child as unknown as Record<string, unknown>);
+        }
+      } catch (err) {
+        console.warn(`[Sync] Failed to pull ${childColl} for shared job ${jobPbId}:`, err);
+      }
+    }
+
+    console.log(`[Sync] Pulled shared job: ${jobRecord.name}`);
+  } catch (err) {
+    console.warn(`[Sync] Failed to pull shared job ${jobPbId}:`, err);
+  }
+}
+
+/**
  * Full sync: pull all user's data from PocketBase.
  * Called on first login or manual "Sync Now".
  */
@@ -236,7 +308,7 @@ export async function fullSync(): Promise<{ success: boolean; counts: Record<str
     for (const collection of collections) {
       const pbCollection = mapCollectionName(collection);
       try {
-        const records = await pb.collection(pbCollection).getFullList({ sort: '-created' });
+        const records = await pb.collection(pbCollection).getFullList();
         counts[collection] = records.length;
 
         for (const record of records) {
@@ -308,36 +380,7 @@ export async function fullSync(): Promise<{ success: boolean; counts: Record<str
 
         // Pull shared jobs and their children
         for (const share of shares) {
-          const jobPbId = share.job as string;
-          const role = share.role as string;
-
-          try {
-            // Fetch the job
-            const jobRecord = await pb.collection('jobs').getOne(jobPbId);
-            await upsertLocalFromPB('jobs', {
-              ...jobRecord,
-              _shared: true,
-              _share_role: role,
-            } as unknown as Record<string, unknown>);
-
-            // Fetch child data
-            const childCollections = ['tasks', 'photos', 'shopping_list', 'panel_schedules', 'chat_messages'];
-            for (const childColl of childCollections) {
-              const pbColl = mapCollectionName(childColl);
-              try {
-                const children = await pb.collection(pbColl).getFullList({
-                  filter: `job = "${jobPbId}"`,
-                });
-                for (const child of children) {
-                  await upsertLocalFromPB(childColl, child as unknown as Record<string, unknown>);
-                }
-              } catch (err) {
-                console.warn(`[Sync] Failed to pull ${childColl} for shared job ${jobPbId}:`, err);
-              }
-            }
-          } catch (err) {
-            console.warn(`[Sync] Failed to pull shared job ${jobPbId}:`, err);
-          }
+          await pullSharedJob(pb, share.job as string, share.role as string);
         }
 
         // Emit updates for all collections

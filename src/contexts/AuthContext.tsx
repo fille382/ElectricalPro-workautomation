@@ -55,8 +55,9 @@ export function AuthProvider({ children }: AuthProviderProps) {
         if (online) {
           setSyncStatus('syncing');
           try {
-            const { fullSync } = await import('../utils/sync');
+            const { fullSync, startRealtimeSync } = await import('../utils/sync');
             await fullSync();
+            await startRealtimeSync();
             if (mounted) setSyncStatus('synced');
           } catch {
             if (mounted) setSyncStatus('synced');
@@ -100,14 +101,15 @@ export function AuthProvider({ children }: AuthProviderProps) {
       if (authUser) {
         setUser(authUser);
         setSyncStatus('syncing');
-        // Trigger full sync after login (pulls shared jobs etc.)
+        // Trigger full sync + start realtime after login
         try {
-          const { fullSync } = await import('../utils/sync');
+          const { fullSync, startRealtimeSync } = await import('../utils/sync');
           await fullSync();
+          await startRealtimeSync();
           setSyncStatus('synced');
         } catch (err) {
           console.warn('[Auth] Post-login sync failed:', err);
-          setSyncStatus('synced'); // Still logged in, just sync failed
+          setSyncStatus('synced');
         }
         return true;
       }

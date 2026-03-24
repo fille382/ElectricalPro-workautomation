@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import * as db from '../utils/db';
+import { onSyncUpdate } from '../utils/sync';
 import type { Job, Task, Photo, SavedContact, ChatMessage, ShoppingItem, PanelSchedule } from '../types';
 
 /**
@@ -10,21 +11,24 @@ export function useJobs() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const loadJobs = async () => {
+  const loadJobs = async (silent = false) => {
     try {
-      setLoading(true);
+      if (!silent) setLoading(true);
       const result = await db.getJobs();
       setJobs(result);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load jobs');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   };
 
   useEffect(() => {
     loadJobs();
+    // Re-fetch silently when sync updates (no loading spinner)
+    const unsub = onSyncUpdate('jobs', () => loadJobs(true));
+    return unsub;
   }, []);
 
   const createJob = async (jobData: Omit<Job, 'id' | 'created_at' | 'updated_at'>) => {
@@ -96,6 +100,8 @@ export function useTasks(jobId: string | null) {
 
   useEffect(() => {
     loadTasks();
+    const unsub = onSyncUpdate('tasks', loadTasks);
+    return unsub;
   }, [jobId]);
 
   const createTask = async (taskData: Omit<Task, 'id' | 'created_at' | 'updated_at'>) => {
@@ -172,6 +178,8 @@ export function usePhotos(jobId: string | null) {
 
   useEffect(() => {
     loadPhotos();
+    const unsub = onSyncUpdate('photos', loadPhotos);
+    return unsub;
   }, [jobId]);
 
   const addPhoto = async (photoData: Omit<Photo, 'id' | 'created_at'>) => {
@@ -311,7 +319,7 @@ export function useShoppingList(jobId: string | null) {
     }
   };
 
-  useEffect(() => { loadItems(); }, [jobId]);
+  useEffect(() => { loadItems(); const unsub = onSyncUpdate('shopping_list', loadItems); return unsub; }, [jobId]);
 
   const addItem = async (item: Omit<ShoppingItem, 'id' | 'created_at'>) => {
     const newItem = await db.addShoppingItem(item);
@@ -350,7 +358,7 @@ export function usePanelSchedules(jobId: string | null) {
     }
   };
 
-  useEffect(() => { loadSchedules(); }, [jobId]);
+  useEffect(() => { loadSchedules(); const unsub = onSyncUpdate('panel_schedules', loadSchedules); return unsub; }, [jobId]);
 
   const addSchedule = async (data: Omit<PanelSchedule, 'id' | 'created_at' | 'updated_at'>) => {
     const newSchedule = await db.addPanelSchedule(data);
