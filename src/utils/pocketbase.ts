@@ -118,22 +118,72 @@ export async function isOnline(): Promise<boolean> {
 }
 
 /**
- * Authenticate with Google OAuth via PocketBase SDK's built-in method.
- * Uses authWithOAuth2 which handles popup + realtime internally.
- * We patch realtime to use localStorage polling instead of SSE
- * (SSE doesn't work through tunnels like ngrok/cloudflare).
+ * Authenticate with Google OAuth via manual popup + localStorage + REST.
+ *
+ * Flow:
+ * 1. Get auth methods from PocketBase (REST, works with ngrok header)
+ * 2. Open popup to Google login
+ * 3. Google redirects to our oauth-callback.html on GitHub Pages
+ * 4. Callback page stores code in localStorage
+ * 5. We poll localStorage for the result (no SSE, no COOP issues)
+ * 6. Exchange code for auth token via REST API
  */
 export async function authWithGoogle(): Promise<{ id: string; email: string; name: string } | null> {
   const pb = await getPB();
   if (!pb) throw new Error('PocketBase not configured');
 
   try {
-    const authData = await pb.collection('users').authWithOAuth2({
-      provider: 'google',
+    // Step 1: Get Google provider config
+    const authMethods = await pb.collection('users').listAuthMethods();
+    const google = authMethods.oauth2?.providers?.find((p: any) => p.name === 'google');
+    if (!google) throw new Error('Google provider inte konfigurerad');
+
+    // Step 2: Build redirect URL to our callback page (same origin as app)
+    const redirectUrl = window.location.origin + (import.meta.env.BASE_URL || '/') + 'oauth-callback.html';
+    const authUrl = google.authURL + encodeURIComponent(redirectUrl);
+
+    // Clear any previous result
+    localStorage.removeItem('pb_oauth_result');
+
+    // Step 3: Open popup
+    const popup = window.open(authUrl, 'oauth2-popup', 'width=600,height=700,scrollbars=yes,resizable=yes');
+    if (!popup) throw new Error('Popup blockerad. Tillåt popups för denna sida.');
+
+    // Step 4: Poll localStorage for result (no SSE, no COOP needed)
+    const result = await new Promise<{ code: string; state: string }>((resolve, reject) => {
+      const timeout = setTimeout(() => {
+        cleanup();
+        reject(new Error('Inloggning tog för lång tid'));
+      }, 120000);
+
+      const interval = setInterval(() => {
+        // Check localStorage for result from callback page
+        const stored = localStorage.getItem('pb_oauth_result');
+        if (stored) {
+          localStorage.removeItem('pb_oauth_result');
+          cleanup();
+          try { popup.close(); } catch {}
+          resolve(JSON.parse(stored));
+          return;
+        }
+      }, 500);
+
+      function cleanup() {
+        clearTimeout(timeout);
+        clearInterval(interval);
+      }
     });
 
+    // Step 5: Exchange code for auth token via REST (no SSE needed)
+    const authData = await pb.collection('users').authWithOAuth2Code(
+      'google',
+      result.code,
+      google.codeVerifier,
+      redirectUrl,
+    );
     const user = authData.record;
 
+    // Step 6: Save auth info
     const currentSettings = await getSettings();
     await saveSettings({
       ...currentSettings,

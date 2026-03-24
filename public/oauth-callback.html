@@ -4,24 +4,20 @@
 <body>
 <p>Loggar in...</p>
 <script>
-  // PocketBase's /api/oauth2-redirect redirects here with ?code=...&state=...
-  // We pass the code back to the parent window (opener) via postMessage
+  // Google redirects here with ?code=...&state=...
+  // Store in localStorage so the parent window can pick it up
   var params = new URLSearchParams(window.location.search);
   var code = params.get('code');
   var state = params.get('state');
 
-  if (code && window.opener) {
-    window.opener.postMessage({
-      type: 'oauth2-callback',
+  if (code) {
+    // Store result in localStorage - parent window polls for this
+    localStorage.setItem('pb_oauth_result', JSON.stringify({
       code: code,
       state: state
-    }, '*');
+    }));
     document.body.innerHTML = '<p>Inloggning lyckades! Fönstret stängs...</p>';
     setTimeout(function() { window.close(); }, 1000);
-  } else if (code) {
-    // No opener (mobile/redirect flow) - redirect to app
-    var base = window.location.pathname.replace('/oauth-callback.html', '/');
-    window.location.href = base + '?code=' + encodeURIComponent(code) + '&state=' + encodeURIComponent(state) + '#/';
   } else {
     document.body.innerHTML = '<p>Inloggning misslyckades. Stäng fönstret och försök igen.</p>';
   }
