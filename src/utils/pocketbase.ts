@@ -224,7 +224,9 @@ export async function logout(): Promise<void> {
   if (pbInstance) {
     pbInstance.authStore.clear();
   }
+  const currentSettings = await getSettings();
   await saveSettings({
+    ...currentSettings,
     pb_auth_token: undefined,
     pb_user_id: undefined,
     pb_user_email: undefined,
