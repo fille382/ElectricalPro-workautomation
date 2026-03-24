@@ -66,6 +66,8 @@ export async function getPB(): Promise<PocketBase | null> {
       return { url, options };
     };
     // Disable realtime SSE - tunnels don't support long-lived EventSource connections
+    // Save original connect so OAuth can temporarily re-enable it
+    (pbInstance.realtime as any)._originalConnect = (pbInstance.realtime as any).connect;
     try {
       (pbInstance.realtime as any).disconnect();
     } catch {}
@@ -123,78 +125,31 @@ export async function isOnline(): Promise<boolean> {
 }
 
 /**
- * Authenticate with Google OAuth via manual popup + code exchange.
- * PocketBase SDK's built-in authWithOAuth2 requires realtime/SSE which
- * doesn't work through tunnels (ngrok/cloudflare). This implementation
- * uses a popup that redirects to PocketBase's oauth2-redirect page,
- * which then posts the code back via a callback page we host.
+ * Authenticate with Google OAuth via PocketBase SDK's built-in method.
+ * Uses authWithOAuth2 which handles popup + realtime internally.
+ * We patch realtime to use localStorage polling instead of SSE
+ * (SSE doesn't work through tunnels like ngrok/cloudflare).
  */
 export async function authWithGoogle(): Promise<{ id: string; email: string; name: string } | null> {
   const pb = await getPB();
   if (!pb) throw new Error('PocketBase not configured');
 
   try {
-    // Step 1: Get auth methods to get Google provider config
-    const authMethods = await pb.collection('users').listAuthMethods();
-    const google = authMethods.oauth2?.providers?.find((p: any) => p.name === 'google');
-    if (!google) throw new Error('Missing or invalid provider "google"');
+    // Re-enable realtime temporarily for OAuth (SDK needs it)
+    // Store original and restore after
+    const origConnect = (pb.realtime as any).connect;
+    // Restore the real connect so SDK can use it for OAuth
+    if ((pb.realtime as any)._originalConnect) {
+      (pb.realtime as any).connect = (pb.realtime as any)._originalConnect;
+    }
 
-    // Step 2: Use PocketBase's built-in oauth2-redirect endpoint
-    // This is already registered in Google Console
-    const redirectUrl = pb.buildURL('/api/oauth2-redirect');
-    const authUrl = google.authURL + encodeURIComponent(redirectUrl);
-
-    // Step 3: Open popup
-    const popup = window.open(authUrl, 'oauth2-popup', 'width=600,height=700,scrollbars=yes,resizable=yes');
-    if (!popup) throw new Error('Popup blockerad. Tillåt popups för denna sida.');
-
-    // Step 4: Listen for the OAuth2 callback via localStorage polling
-    // PocketBase's /api/oauth2-redirect page stores the result in the URL fragment
-    // We poll the popup's URL to catch when it redirects back
-    const result = await new Promise<{ code: string; state: string }>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        cleanup();
-        reject(new Error('OAuth2 login tog för lång tid'));
-      }, 120000);
-
-      // Listen for message from oauth-callback.html
-      function onMessage(event: MessageEvent) {
-        if (event.data?.type === 'oauth2-callback' && event.data?.code) {
-          cleanup();
-          resolve({ code: event.data.code, state: event.data.state });
-        }
-      }
-      window.addEventListener('message', onMessage);
-
-      // Check if popup was closed manually (not by our callback)
-      // COOP policy blocks popup.closed on cross-origin pages (Google login)
-      // so we wrap in try/catch and only reject if we can confirm it's closed
-      const interval = setInterval(() => {
-        try {
-          if (popup.closed) {
-            cleanup();
-            reject(new Error('OAuth2-fönstret stängdes'));
-          }
-        } catch {
-          // COOP blocks access — popup is still on Google's page, ignore
-        }
-      }, 1000);
-
-      function cleanup() {
-        clearTimeout(timeout);
-        clearInterval(interval);
-        window.removeEventListener('message', onMessage);
-        try { popup?.close(); } catch {}
-      }
+    const authData = await pb.collection('users').authWithOAuth2({
+      provider: 'google',
     });
 
-    // Step 5: Exchange code for auth token
-    const authData = await pb.collection('users').authWithOAuth2Code(
-      'google',
-      result.code,
-      google.codeVerifier,
-      redirectUrl,
-    );
+    // Re-disable realtime after OAuth
+    (pb.realtime as any).connect = async () => {};
+
     const user = authData.record;
 
     const currentSettings = await getSettings();
