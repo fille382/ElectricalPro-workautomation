@@ -51,6 +51,8 @@ export default defineConfig({
       workbox: {
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024, // 5MB for large product catalog
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        globIgnores: ['**/oauth-callback.html'],
+        navigateFallbackDenylist: [/\/oauth-callback\.html/],
         skipWaiting: true,
         clientsClaim: true,
         runtimeCaching: [
