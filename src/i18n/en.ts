@@ -272,6 +272,7 @@ const en = {
   'share.viewer': 'Can view',
   'share.editor': 'Can edit',
   'share.share': 'Share',
+  'share.shared': 'Shared',
   'share.sharedWith': 'Shared with',
   'share.remove': 'Remove',
   'share.userNotFound': 'User not found. They need to create an account first.',

@@ -250,7 +250,105 @@ export async function fullSync(): Promise<{ success: boolean; counts: Record<str
       }
     }
 
-    // Also push any dirty local records
+    // Phase 2: Pull shared jobs
+    try {
+      const userId = pb.authStore.record?.id;
+      if (userId) {
+        const shares = await pb.collection('job_shares').getFullList({
+          filter: `user = "${userId}"`,
+        });
+        console.log(`[Sync] Found ${shares.length} shared jobs`);
+
+        // Get current local shared jobs to detect revocations
+        const db2 = await import('./db');
+        const dbInstance = await db2.getDB();
+        const allLocalJobs = await new Promise<any[]>((resolve, reject) => {
+          const tx = dbInstance.transaction('jobs', 'readonly');
+          const store = tx.objectStore('jobs');
+          const req = store.getAll();
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => reject(req.error);
+        });
+        const localSharedJobs = allLocalJobs.filter((j: any) => j._shared);
+        const activeSharePbIds = new Set(shares.map((s: any) => s.job));
+
+        // Remove revoked shares
+        for (const localJob of localSharedJobs) {
+          if (localJob.pb_id && !activeSharePbIds.has(localJob.pb_id)) {
+            console.log(`[Sync] Revoking shared job: ${localJob.name}`);
+            await new Promise<void>((resolve, reject) => {
+              const tx = dbInstance.transaction('jobs', 'readwrite');
+              const store = tx.objectStore('jobs');
+              const req = store.delete(localJob.id);
+              req.onsuccess = () => resolve();
+              req.onerror = () => reject(req.error);
+            });
+            // Also delete child data
+            for (const childColl of ['tasks', 'photos', 'shopping_list', 'panel_schedules', 'chat_messages']) {
+              const childRecords = await new Promise<any[]>((resolve, reject) => {
+                const tx = dbInstance.transaction(childColl, 'readonly');
+                const store = tx.objectStore(childColl);
+                const req = store.getAll();
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => reject(req.error);
+              });
+              const toDelete = childRecords.filter((r: any) => r.job_id === localJob.id);
+              for (const r of toDelete) {
+                await new Promise<void>((resolve, reject) => {
+                  const tx = dbInstance.transaction(childColl, 'readwrite');
+                  const store = tx.objectStore(childColl);
+                  const req = store.delete(r.id);
+                  req.onsuccess = () => resolve();
+                  req.onerror = () => reject(req.error);
+                });
+              }
+            }
+          }
+        }
+
+        // Pull shared jobs and their children
+        for (const share of shares) {
+          const jobPbId = share.job as string;
+          const role = share.role as string;
+
+          try {
+            // Fetch the job
+            const jobRecord = await pb.collection('jobs').getOne(jobPbId);
+            await upsertLocalFromPB('jobs', {
+              ...jobRecord,
+              _shared: true,
+              _share_role: role,
+            } as unknown as Record<string, unknown>);
+
+            // Fetch child data
+            const childCollections = ['tasks', 'photos', 'shopping_list', 'panel_schedules', 'chat_messages'];
+            for (const childColl of childCollections) {
+              const pbColl = mapCollectionName(childColl);
+              try {
+                const children = await pb.collection(pbColl).getFullList({
+                  filter: `job = "${jobPbId}"`,
+                });
+                for (const child of children) {
+                  await upsertLocalFromPB(childColl, child as unknown as Record<string, unknown>);
+                }
+              } catch (err) {
+                console.warn(`[Sync] Failed to pull ${childColl} for shared job ${jobPbId}:`, err);
+              }
+            }
+          } catch (err) {
+            console.warn(`[Sync] Failed to pull shared job ${jobPbId}:`, err);
+          }
+        }
+
+        // Emit updates for all collections
+        emitSyncUpdate('jobs');
+        ['tasks', 'photos', 'shopping_list', 'panel_schedules', 'chat_messages'].forEach(emitSyncUpdate);
+      }
+    } catch (err) {
+      console.warn('[Sync] Failed to pull shared jobs:', err);
+    }
+
+    // Phase 3: Push any dirty local records
     await processSyncQueue();
 
     notifyStatus('synced');
@@ -438,6 +536,26 @@ async function deleteLocalByPBId(collection: string, pbId: string): Promise<void
   });
 }
 
+/**
+ * Resolve a PocketBase job ID to a local job ID.
+ * Looks up jobs in IndexedDB by pb_id field.
+ */
+async function resolveJobId(pbJobId: string): Promise<string> {
+  const db = await import('./db');
+  const dbInstance = await db.getDB();
+  return new Promise((resolve) => {
+    const tx = dbInstance.transaction('jobs', 'readonly');
+    const store = tx.objectStore('jobs');
+    const req = store.getAll();
+    req.onsuccess = () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const match = req.result.find((j: any) => j.pb_id === pbJobId);
+      resolve(match ? match.id : pbJobId); // fallback to PB ID if no local match
+    };
+    req.onerror = () => resolve(pbJobId);
+  });
+}
+
 async function upsertLocalFromPB(collection: string, pbRecord: Record<string, unknown>): Promise<void> {
   const db = await import('./db');
   const dbInstance = await db.getDB();
@@ -453,6 +571,16 @@ async function upsertLocalFromPB(collection: string, pbRecord: Record<string, un
 
   // Convert PB record to local format
   const localData = convertPBToLocal(collection, pbRecord);
+
+  // Preserve shared job metadata
+  if (pbRecord._shared !== undefined) localData._shared = pbRecord._shared;
+  if (pbRecord._share_role !== undefined) localData._share_role = pbRecord._share_role;
+
+  // Resolve PB job ID → local job ID for child collections
+  const childCollections = ['tasks', 'photos', 'shopping_list', 'panel_schedules', 'chat_messages'];
+  if (childCollections.includes(collection) && localData.job_id) {
+    localData.job_id = await resolveJobId(localData.job_id as string);
+  }
 
   if (existing) {
     const existingTime = existing.updated_at || existing.created_at || 0;
@@ -516,8 +644,9 @@ function convertPBToLocal(collection: string, pbRecord: Record<string, unknown>)
   }
 
   // Map PB relation field 'job' → local 'job_id'
+  // The PB 'job' field contains a PB record ID — we need the local job ID
   if (data.job && !data.job_id) {
-    data.job_id = data.job;
+    data.job_id = data.job; // Temporarily store PB ID, resolved in upsertLocalFromPB
     delete data.job;
   }
   if (data.owner && !data.owner_id) {

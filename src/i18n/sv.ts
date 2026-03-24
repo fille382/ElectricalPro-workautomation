@@ -274,6 +274,7 @@ const sv: Translations = {
   'share.viewer': 'Kan visa',
   'share.editor': 'Kan redigera',
   'share.share': 'Dela',
+  'share.shared': 'Delad',
   'share.sharedWith': 'Delad med',
   'share.remove': 'Ta bort',
   'share.userNotFound': 'Användaren hittades inte. De behöver skapa ett konto först.',

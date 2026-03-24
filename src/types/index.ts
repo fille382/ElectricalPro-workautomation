@@ -43,6 +43,8 @@ export interface Job {
   lat?: number;
   lon?: number;
   status: 'active' | 'completed' | 'archived';
+  _shared?: boolean;
+  _share_role?: 'viewer' | 'editor';
   created_at: number;
   updated_at: number;
 }

@@ -213,10 +213,21 @@ export default function SettingsPage({ apiKey, onApiKeyChange }: SettingsPagePro
 
             {/* Sync button */}
             <button
-              onClick={() => {
+              onClick={async () => {
                 setSyncStatus('syncing');
-                setTimeout(() => setSyncStatus('synced'), 1500);
-                toast.success(t('settings.syncNow'));
+                try {
+                  const { fullSync } = await import('../utils/sync');
+                  const result = await fullSync();
+                  setSyncStatus('synced');
+                  if (result.success) {
+                    toast.success(t('settings.syncNow'));
+                  } else {
+                    toast.error('Sync misslyckades');
+                  }
+                } catch {
+                  setSyncStatus('synced');
+                  toast.error('Sync misslyckades');
+                }
               }}
               className="btn-primary w-full"
             >

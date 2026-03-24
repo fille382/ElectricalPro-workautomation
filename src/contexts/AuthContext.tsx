@@ -52,7 +52,18 @@ export function AuthProvider({ children }: AuthProviderProps) {
       if (mounted && authUser) {
         setUser(authUser);
         const online = await checkOnline();
-        setSyncStatus(online ? 'synced' : 'offline');
+        if (online) {
+          setSyncStatus('syncing');
+          try {
+            const { fullSync } = await import('../utils/sync');
+            await fullSync();
+            if (mounted) setSyncStatus('synced');
+          } catch {
+            if (mounted) setSyncStatus('synced');
+          }
+        } else {
+          setSyncStatus('offline');
+        }
       } else if (mounted) {
         setSyncStatus('offline');
       }
@@ -88,7 +99,16 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const authUser = await authWithGoogle();
       if (authUser) {
         setUser(authUser);
-        setSyncStatus('synced');
+        setSyncStatus('syncing');
+        // Trigger full sync after login (pulls shared jobs etc.)
+        try {
+          const { fullSync } = await import('../utils/sync');
+          await fullSync();
+          setSyncStatus('synced');
+        } catch (err) {
+          console.warn('[Auth] Post-login sync failed:', err);
+          setSyncStatus('synced'); // Still logged in, just sync failed
+        }
         return true;
       }
       return false;

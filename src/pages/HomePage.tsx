@@ -5,7 +5,6 @@ import { useJobs, useSavedContacts } from '../hooks/useIndexedDB';
 import { saveContactsFromJob } from '../utils/db';
 import { useTranslation } from '../contexts/I18nContext';
 import { useAuth } from '../contexts/AuthContext';
-import { getPBSync } from '../utils/pocketbase';
 import JobForm from '../components/JobForm';
 import MapTileBackground from '../components/MapTileBackground';
 
@@ -19,30 +18,6 @@ export default function HomePage({ apiKey }: HomePageProps) {
   const { t } = useTranslation();
   const { isAuthenticated, isOnline, user } = useAuth();
   const [showForm, setShowForm] = useState(false);
-  const [sharedJobCount, setSharedJobCount] = useState(0);
-
-  // Load shared job count when authenticated
-  useEffect(() => {
-    if (!isAuthenticated || !isOnline) {
-      setSharedJobCount(0);
-      return;
-    }
-    const pb = getPBSync();
-    if (!pb) return;
-
-    const userId = pb.authStore.record?.id;
-    if (!userId) return;
-    (async () => {
-      try {
-        const result = await pb.collection('job_shares').getList(1, 1, {
-          filter: `user = "${userId}"`,
-        });
-        setSharedJobCount(result.totalItems);
-      } catch {
-        // Silently ignore - PB might not have this collection yet
-      }
-    })();
-  }, [isAuthenticated, isOnline]);
 
   const handleCreateJob = async (jobData: any) => {
     try {
@@ -86,8 +61,9 @@ export default function HomePage({ apiKey }: HomePageProps) {
     }
   };
 
-  const activeJobs = jobs.filter((j) => j.status === 'active');
-  const completedJobs = jobs.filter((j) => j.status === 'completed');
+  const activeJobs = jobs.filter((j) => j.status === 'active' && !j._shared);
+  const sharedJobs = jobs.filter((j) => j._shared);
+  const completedJobs = jobs.filter((j) => j.status === 'completed' && !j._shared);
 
   if (loading) {
     return (
@@ -188,18 +164,35 @@ export default function HomePage({ apiKey }: HomePageProps) {
         )}
       </div>
 
-      {isAuthenticated && sharedJobCount > 0 && (
+      {sharedJobs.length > 0 && (
         <div className="mb-8">
           <h2 className="text-xl font-bold text-blue-900 dark:text-gray-100 mb-4">
-            {t('share.sharedWithMe')} ({sharedJobCount})
+            {t('share.sharedWithMe')} ({sharedJobs.length})
           </h2>
-          <div className="card text-center py-8">
-            <svg className="w-12 h-12 text-gray-300 dark:text-gray-600 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
-            <p className="text-gray-500 dark:text-gray-400 text-sm">
-              {sharedJobCount} {sharedJobCount === 1 ? 'job' : 'jobs'}
-            </p>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {sharedJobs.map((job) => (
+              <Link key={job.id} to={`/job/${job.id}`} className="card cursor-pointer group transition-all duration-300 ease-out hover:shadow-xl hover:shadow-purple-500/10 hover:-translate-y-1 hover:border-purple-500/30 dark:hover:border-purple-400/30 border border-transparent overflow-hidden !p-0">
+                {job.lat && job.lon ? (
+                  <MapTileBackground lat={job.lat} lon={job.lon} className="h-20">
+                    <div className="absolute inset-0 bg-gradient-to-t from-white/80 dark:from-gray-800/80 via-transparent to-transparent" />
+                    <span className="badge-primary absolute top-2 right-2 !bg-purple-600">{job._share_role === 'editor' ? '✏️' : '👁️'} {t('share.shared')}</span>
+                  </MapTileBackground>
+                ) : (
+                  <div className="h-2 bg-gradient-to-r from-purple-500 to-purple-600 rounded-t-lg" />
+                )}
+                <div className="p-4">
+                  <div className="flex items-start justify-between mb-1">
+                    <div className="flex-1">
+                      <h3 className="font-bold text-blue-900 dark:text-gray-100 group-hover:text-purple-500 dark:group-hover:text-purple-400 transition-colors duration-300 line-clamp-2">{job.name}</h3>
+                      <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-1">{job.address}</p>
+                    </div>
+                    {!(job.lat && job.lon) && <span className="badge-primary ml-2 flex-shrink-0 !bg-purple-600">{job._share_role === 'editor' ? '✏️' : '👁️'}</span>}
+                  </div>
+                  <p className="text-sm text-gray-600 dark:text-gray-400 line-clamp-2 mb-2">{job.description}</p>
+                  <div className="text-xs text-gray-500">{new Date(job.created_at).toLocaleDateString()}</div>
+                </div>
+              </Link>
+            ))}
           </div>
         </div>
       )}
