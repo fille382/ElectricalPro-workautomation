@@ -31,15 +31,26 @@ export default function ShareJob({ jobId, isOpen, onClose }: ShareJobProps) {
     if (!pb) return;
 
     try {
+      // jobId might be a local ID - try to find the PB record
+      let pbJobId = jobId;
+      try {
+        const jobs = await pb.collection('jobs').getFullList({ filter: `id = "${jobId}"` });
+        if (jobs.length === 0) {
+          // Not a PB ID - no shares possible yet (job not synced)
+          return;
+        }
+        pbJobId = jobs[0].id;
+      } catch { return; }
+
       const records = await pb.collection('job_shares').getFullList({
-        filter: `job_id = "${jobId}"`,
+        filter: `job = "${pbJobId}"`,
       });
       setShares(
         records.map((r) => ({
           id: r.id,
           pb_id: r.id,
-          job_id: r.job_id,
-          user_id: r.user_id,
+          job_id: r.job,
+          user_id: r.user,
           user_email: r.user_email,
           user_name: r.user_name || '',
           role: r.role as 'viewer' | 'editor',
@@ -76,11 +87,9 @@ export default function ShareJob({ jobId, isOpen, onClose }: ShareJobProps) {
 
       // Create the share record
       await pb.collection('job_shares').create({
-        job_id: jobId,
-        owner_id: user.id,
-        user_id: targetUser.id,
+        job: jobId,
+        user: targetUser.id,
         user_email: targetUser.email,
-        user_name: targetUser.name || targetUser.email,
         role,
       });
 
