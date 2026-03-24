@@ -1,7 +1,8 @@
 import type { Job, Task, Photo, AppSettings, SavedContact, JobContact, ChatMessage, KnowledgeEntry, ShoppingItem, PanelSchedule } from '../types';
+import { queueSync } from './sync';
 
 const DB_NAME = 'electrician_app';
-const DB_VERSION = 6;
+const DB_VERSION = 7; // v7: adds sync fields support
 
 let db: IDBDatabase | null = null;
 
@@ -84,7 +85,7 @@ export async function initDB(): Promise<IDBDatabase> {
 /**
  * Get the database instance
  */
-async function getDB(): Promise<IDBDatabase> {
+export async function getDB(): Promise<IDBDatabase> {
   if (!db) {
     db = await initDB();
   }
@@ -101,6 +102,7 @@ export async function createJob(job: Omit<Job, 'id' | 'created_at' | 'updated_at
   const newJob: Job = {
     ...job,
     id,
+    _dirty: true,
     created_at: now,
     updated_at: now,
   };
@@ -111,7 +113,10 @@ export async function createJob(job: Omit<Job, 'id' | 'created_at' | 'updated_at
     const request = store.add(newJob);
 
     request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(newJob);
+    request.onsuccess = () => {
+      queueSync('jobs', id, 'create');
+      resolve(newJob);
+    };
   });
 }
 
@@ -151,6 +156,7 @@ export async function updateJob(id: string, updates: Partial<Job>): Promise<Job>
   const updatedJob: Job = {
     ...job,
     ...updates,
+    _dirty: true,
     id, // Ensure id doesn't change
     created_at: job.created_at, // Ensure created_at doesn't change
     updated_at: Date.now(),
@@ -162,7 +168,10 @@ export async function updateJob(id: string, updates: Partial<Job>): Promise<Job>
     const request = store.put(updatedJob);
 
     request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(updatedJob);
+    request.onsuccess = () => {
+      queueSync('jobs', id, 'update');
+      resolve(updatedJob);
+    };
   });
 }
 
@@ -183,6 +192,7 @@ export async function deleteJob(id: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const transaction = database.transaction(['jobs'], 'readwrite');
     const store = transaction.objectStore('jobs');
+    queueSync('jobs', id, 'delete');
     const request = store.delete(id);
 
     request.onerror = () => reject(request.error);
@@ -200,6 +210,7 @@ export async function createTask(task: Omit<Task, 'id' | 'created_at' | 'updated
   const newTask: Task = {
     ...task,
     id,
+    _dirty: true,
     created_at: now,
     updated_at: now,
   };
@@ -210,7 +221,10 @@ export async function createTask(task: Omit<Task, 'id' | 'created_at' | 'updated
     const request = store.add(newTask);
 
     request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(newTask);
+    request.onsuccess = () => {
+      queueSync('tasks', id, 'create');
+      resolve(newTask);
+    };
   });
 }
 
@@ -261,6 +275,7 @@ export async function updateTask(id: string, updates: Partial<Task>): Promise<Ta
   const updatedTask: Task = {
     ...task,
     ...updates,
+    _dirty: true,
     id,
     created_at: task.created_at,
     updated_at: Date.now(),
@@ -272,7 +287,10 @@ export async function updateTask(id: string, updates: Partial<Task>): Promise<Ta
     const request = store.put(updatedTask);
 
     request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(updatedTask);
+    request.onsuccess = () => {
+      queueSync('tasks', id, 'update');
+      resolve(updatedTask);
+    };
   });
 }
 
@@ -288,6 +306,7 @@ export async function deleteTask(id: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const transaction = database.transaction(['tasks'], 'readwrite');
     const store = transaction.objectStore('tasks');
+    queueSync('tasks', id, 'delete');
     const request = store.delete(id);
 
     request.onerror = () => reject(request.error);
@@ -305,6 +324,7 @@ export async function addPhoto(photo: Omit<Photo, 'id' | 'created_at'>): Promise
   const newPhoto: Photo = {
     ...photo,
     id,
+    _dirty: true,
     created_at: now,
   };
 
@@ -314,7 +334,10 @@ export async function addPhoto(photo: Omit<Photo, 'id' | 'created_at'>): Promise
     const request = store.add(newPhoto);
 
     request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(newPhoto);
+    request.onsuccess = () => {
+      queueSync('photos', id, 'create');
+      resolve(newPhoto);
+    };
   });
 }
 
@@ -366,6 +389,7 @@ export async function updatePhotoExtraction(photoId: string, extractedInfo: any)
   const updatedPhoto: Photo = {
     ...photo,
     extracted_info: extractedInfo,
+    _dirty: true,
   };
 
   return new Promise((resolve, reject) => {
@@ -374,7 +398,10 @@ export async function updatePhotoExtraction(photoId: string, extractedInfo: any)
     const request = store.put(updatedPhoto);
 
     request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(updatedPhoto);
+    request.onsuccess = () => {
+      queueSync('photos', photoId, 'update');
+      resolve(updatedPhoto);
+    };
   });
 }
 
@@ -383,6 +410,7 @@ export async function deletePhoto(id: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const transaction = database.transaction(['photos'], 'readwrite');
     const store = transaction.objectStore('photos');
+    queueSync('photos', id, 'delete');
     const request = store.delete(id);
 
     request.onerror = () => reject(request.error);
@@ -449,6 +477,7 @@ export async function createSavedContact(contact: Omit<SavedContact, 'id' | 'cre
   const newContact: SavedContact = {
     ...contact,
     id,
+    _dirty: true,
     created_at: now,
     updated_at: now,
   };
@@ -459,7 +488,10 @@ export async function createSavedContact(contact: Omit<SavedContact, 'id' | 'cre
     const request = store.add(newContact);
 
     request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(newContact);
+    request.onsuccess = () => {
+      queueSync('saved_contacts', id, 'create');
+      resolve(newContact);
+    };
   });
 }
 
@@ -480,6 +512,7 @@ export async function updateSavedContact(id: string, updates: Partial<SavedConta
   const updated: SavedContact = {
     ...existing,
     ...updates,
+    _dirty: true,
     id,
     created_at: existing.created_at,
     updated_at: Date.now(),
@@ -491,7 +524,10 @@ export async function updateSavedContact(id: string, updates: Partial<SavedConta
     const request = store.put(updated);
 
     request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(updated);
+    request.onsuccess = () => {
+      queueSync('saved_contacts', id, 'update');
+      resolve(updated);
+    };
   });
 }
 
@@ -500,6 +536,7 @@ export async function deleteSavedContact(id: string): Promise<void> {
   return new Promise((resolve, reject) => {
     const transaction = database.transaction(['saved_contacts'], 'readwrite');
     const store = transaction.objectStore('saved_contacts');
+    queueSync('saved_contacts', id, 'delete');
     const request = store.delete(id);
 
     request.onerror = () => reject(request.error);
@@ -532,6 +569,7 @@ export async function addChatMessage(message: Omit<ChatMessage, 'id' | 'created_
   const newMessage: ChatMessage = {
     ...message,
     id,
+    _dirty: true,
     created_at: Date.now(),
   };
 
@@ -541,7 +579,10 @@ export async function addChatMessage(message: Omit<ChatMessage, 'id' | 'created_
     const request = store.add(newMessage);
 
     request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(newMessage);
+    request.onsuccess = () => {
+      queueSync('chat_messages', id, 'create');
+      resolve(newMessage);
+    };
   });
 }
 
@@ -578,14 +619,17 @@ export async function getShoppingItems(jobId: string): Promise<ShoppingItem[]> {
 export async function addShoppingItem(item: Omit<ShoppingItem, 'id' | 'created_at'>): Promise<ShoppingItem> {
   const database = await getDB();
   const id = `shop_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  const newItem: ShoppingItem = { ...item, id, created_at: Date.now() };
+  const newItem: ShoppingItem = { ...item, id, _dirty: true, created_at: Date.now() };
 
   return new Promise((resolve, reject) => {
     const transaction = database.transaction(['shopping_list'], 'readwrite');
     const store = transaction.objectStore('shopping_list');
     const request = store.add(newItem);
     request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(newItem);
+    request.onsuccess = () => {
+      queueSync('shopping_list', id, 'create');
+      resolve(newItem);
+    };
   });
 }
 
@@ -600,13 +644,16 @@ export async function updateShoppingItem(id: string, updates: Partial<ShoppingIt
   });
 
   if (!existing) throw new Error('Shopping item not found');
-  const updated = { ...existing, ...updates, id, created_at: existing.created_at };
+  const updated = { ...existing, ...updates, _dirty: true, id, created_at: existing.created_at };
 
   return new Promise((resolve, reject) => {
     const tx = database.transaction(['shopping_list'], 'readwrite');
     const request = tx.objectStore('shopping_list').put(updated);
     request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(updated);
+    request.onsuccess = () => {
+      queueSync('shopping_list', id, 'update');
+      resolve(updated);
+    };
   });
 }
 
@@ -614,6 +661,7 @@ export async function deleteShoppingItem(id: string): Promise<void> {
   const database = await getDB();
   return new Promise((resolve, reject) => {
     const tx = database.transaction(['shopping_list'], 'readwrite');
+    queueSync('shopping_list', id, 'delete');
     const request = tx.objectStore('shopping_list').delete(id);
     request.onerror = () => reject(request.error);
     request.onsuccess = () => resolve();
@@ -638,6 +686,7 @@ export async function addPanelSchedule(data: Omit<PanelSchedule, 'id' | 'created
   const schedule: PanelSchedule = {
     ...data,
     id: `ps_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    _dirty: true,
     created_at: Date.now(),
     updated_at: Date.now(),
   };
@@ -645,7 +694,10 @@ export async function addPanelSchedule(data: Omit<PanelSchedule, 'id' | 'created
     const tx = database.transaction(['panel_schedules'], 'readwrite');
     const request = tx.objectStore('panel_schedules').add(schedule);
     request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(schedule);
+    request.onsuccess = () => {
+      queueSync('panel_schedules', schedule.id, 'create');
+      resolve(schedule);
+    };
   });
 }
 
@@ -659,10 +711,13 @@ export async function updatePanelSchedule(id: string, updates: Partial<PanelSche
     getReq.onsuccess = () => {
       const existing = getReq.result;
       if (!existing) { reject(new Error('Panel schedule not found')); return; }
-      const updated = { ...existing, ...updates, id, updated_at: Date.now() };
+      const updated = { ...existing, ...updates, _dirty: true, id, updated_at: Date.now() };
       const putReq = store.put(updated);
       putReq.onerror = () => reject(putReq.error);
-      putReq.onsuccess = () => resolve();
+      putReq.onsuccess = () => {
+        queueSync('panel_schedules', id, 'update');
+        resolve();
+      };
     };
   });
 }
@@ -671,6 +726,7 @@ export async function deletePanelSchedule(id: string): Promise<void> {
   const database = await getDB();
   return new Promise((resolve, reject) => {
     const tx = database.transaction(['panel_schedules'], 'readwrite');
+    queueSync('panel_schedules', id, 'delete');
     const request = tx.objectStore('panel_schedules').delete(id);
     request.onerror = () => reject(request.error);
     request.onsuccess = () => resolve();
@@ -695,14 +751,17 @@ export async function addKnowledge(entry: Omit<KnowledgeEntry, 'id' | 'created_a
   const id = `kb_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
   const now = Date.now();
 
-  const newEntry: KnowledgeEntry = { ...entry, id, useCount: 0, created_at: now, updated_at: now };
+  const newEntry: KnowledgeEntry = { ...entry, id, _dirty: true, useCount: 0, created_at: now, updated_at: now };
 
   return new Promise((resolve, reject) => {
     const transaction = database.transaction(['knowledge_base'], 'readwrite');
     const store = transaction.objectStore('knowledge_base');
     const request = store.add(newEntry);
     request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(newEntry);
+    request.onsuccess = () => {
+      queueSync('knowledge_base', id, 'create');
+      resolve(newEntry);
+    };
   });
 }
 
@@ -719,14 +778,17 @@ export async function updateKnowledge(id: string, updates: Partial<KnowledgeEntr
 
   if (!existing) return;
 
-  const updated = { ...existing, ...updates, id, created_at: existing.created_at, updated_at: Date.now() };
+  const updated = { ...existing, ...updates, _dirty: true, id, created_at: existing.created_at, updated_at: Date.now() };
 
   return new Promise((resolve, reject) => {
     const transaction = database.transaction(['knowledge_base'], 'readwrite');
     const store = transaction.objectStore('knowledge_base');
     const request = store.put(updated);
     request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve();
+    request.onsuccess = () => {
+      queueSync('knowledge_base', id, 'update');
+      resolve();
+    };
   });
 }
 

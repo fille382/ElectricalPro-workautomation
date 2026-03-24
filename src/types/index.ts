@@ -1,3 +1,9 @@
+// === Sync fields (added to all syncable entities) ===
+// pb_id: PocketBase record ID (empty until synced)
+// owner_id: PocketBase user ID who owns this record
+// _dirty: marks records with local changes not yet pushed
+// _deleted: soft delete for sync (push delete to PB when online)
+
 // Contact for a job (client, builder, VVS, electrician, etc.)
 export interface JobContact {
   id: string;
@@ -10,6 +16,10 @@ export interface JobContact {
 // Global address-book contact (auto-saved from jobs)
 export interface SavedContact {
   id: string;
+  pb_id?: string;
+  owner_id?: string;
+  _dirty?: boolean;
+  _deleted?: boolean;
   name: string;
   phone?: string;
   email?: string;
@@ -22,6 +32,10 @@ export interface SavedContact {
 // Job types
 export interface Job {
   id: string;
+  pb_id?: string;
+  owner_id?: string;
+  _dirty?: boolean;
+  _deleted?: boolean;
   name: string;
   address: string;
   description: string;
@@ -36,6 +50,10 @@ export interface Job {
 // Task types
 export interface Task {
   id: string;
+  pb_id?: string;
+  owner_id?: string;
+  _dirty?: boolean;
+  _deleted?: boolean;
   job_id: string;
   title: string;
   description: string;
@@ -50,6 +68,10 @@ export interface Task {
 // Photo types
 export interface Photo {
   id: string;
+  pb_id?: string;
+  owner_id?: string;
+  _dirty?: boolean;
+  _deleted?: boolean;
   job_id: string;
   task_id?: string;
   image_data: Blob;
@@ -77,6 +99,10 @@ export interface ElectricalPanelInfo {
 // Knowledge base entry — cached AI answers for reuse
 export interface KnowledgeEntry {
   id: string;
+  pb_id?: string;
+  owner_id?: string;
+  _dirty?: boolean;
+  _deleted?: boolean;
   question: string;
   keywords: string[];
   answer: string;
@@ -90,6 +116,10 @@ export interface KnowledgeEntry {
 // Shopping list item per job
 export interface ShoppingItem {
   id: string;
+  pb_id?: string;
+  owner_id?: string;
+  _dirty?: boolean;
+  _deleted?: boolean;
   job_id: string;
   name: string;
   e_number?: string;       // E-nummer from catalog
@@ -106,6 +136,10 @@ export interface ShoppingItem {
 // Chat message for per-job AI conversation
 export interface ChatMessage {
   id: string;
+  pb_id?: string;
+  owner_id?: string;
+  _dirty?: boolean;
+  _deleted?: boolean;
   job_id: string;
   role: 'user' | 'assistant';
   content: string;
@@ -124,6 +158,10 @@ export interface PanelScheduleRow {
 
 export interface PanelSchedule {
   id: string;
+  pb_id?: string;
+  owner_id?: string;
+  _dirty?: boolean;
+  _deleted?: boolean;
   job_id: string;
   name: string;
   rows: PanelScheduleRow[];
@@ -133,7 +171,35 @@ export interface PanelSchedule {
   updated_at: number;
 }
 
-// API Key storage
+// Job sharing
+export interface JobShare {
+  id: string;
+  pb_id?: string;
+  job_id: string;
+  user_id: string;
+  user_email: string;
+  user_name?: string;
+  role: 'viewer' | 'editor';
+  created_at: number;
+}
+
+// Sync metadata per collection
+export interface SyncMeta {
+  collection: string;
+  last_synced_at: number;
+}
+
+// Sync queue item
+export interface SyncQueueItem {
+  id: string;
+  collection: string;
+  local_id: string;
+  action: 'create' | 'update' | 'delete';
+  created_at: number;
+  retries: number;
+}
+
+// API Key storage + sync settings
 export interface AppSettings {
   claude_api_key?: string;
   language?: 'en' | 'sv';
@@ -141,5 +207,11 @@ export interface AppSettings {
   company_name?: string;
   company_logo?: string;     // base64 data URL
   company_website?: string;
+  // PocketBase sync settings
+  pocketbase_url?: string;
+  pb_auth_token?: string;
+  pb_user_id?: string;
+  pb_user_email?: string;
+  pb_user_name?: string;
   last_updated: number;
 }

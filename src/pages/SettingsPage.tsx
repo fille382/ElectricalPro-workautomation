@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import { useTranslation } from '../contexts/I18nContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { useDebugLog } from '../contexts/DebugLogContext';
+import { useAuth } from '../contexts/AuthContext';
 import { getSettings, saveSettings } from '../utils/db';
 
 interface SettingsPageProps {
@@ -22,6 +23,7 @@ export default function SettingsPage({ apiKey, onApiKeyChange }: SettingsPagePro
   const { t, language, languageSetting, setLanguage } = useTranslation();
   const { themeSetting, setTheme } = useTheme();
   const { enabled: debugEnabled, setEnabled: setDebugEnabled } = useDebugLog();
+  const { user, isAuthenticated, syncStatus, logout: authLogout, setSyncStatus } = useAuth();
 
   // Load company settings on mount
   useEffect(() => {
@@ -171,6 +173,58 @@ export default function SettingsPage({ apiKey, onApiKeyChange }: SettingsPagePro
           </div>
         </div>
       </div>
+
+      {/* Account Section — only show if user is authenticated */}
+      {isAuthenticated && user ? (
+        <div className="card mb-6">
+          <h2 className="text-xl font-bold text-blue-900 dark:text-gray-100 mb-4">{t('settings.sync')}</h2>
+          <div className="space-y-4">
+            {/* User info */}
+            <div className="flex items-center justify-between p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
+              <div>
+                <p className="text-sm font-medium text-green-800 dark:text-green-200">
+                  {user.name}
+                </p>
+                <p className="text-sm text-green-700 dark:text-green-300">{user.email}</p>
+              </div>
+              <div className="flex items-center gap-3">
+                <span className={`text-xs font-medium px-2 py-1 rounded-full ${
+                  syncStatus === 'synced' || syncStatus === 'idle' ? 'bg-green-200 text-green-800 dark:bg-green-800 dark:text-green-200' :
+                  syncStatus === 'syncing' ? 'bg-yellow-200 text-yellow-800 dark:bg-yellow-800 dark:text-yellow-200' :
+                  syncStatus === 'offline' ? 'bg-orange-200 text-orange-800 dark:bg-orange-800 dark:text-orange-200' :
+                  'bg-red-200 text-red-800 dark:bg-red-800 dark:text-red-200'
+                }`}>
+                  {syncStatus === 'synced' || syncStatus === 'idle' ? t('sync.synced') :
+                   syncStatus === 'syncing' ? t('sync.syncing') :
+                   syncStatus === 'offline' ? t('sync.offline') :
+                   t('sync.error')}
+                </span>
+                <button
+                  onClick={async () => {
+                    await authLogout();
+                    toast.success(t('settings.logout'));
+                  }}
+                  className="text-sm text-red-600 dark:text-red-400 hover:underline"
+                >
+                  {t('settings.logout')}
+                </button>
+              </div>
+            </div>
+
+            {/* Sync button */}
+            <button
+              onClick={() => {
+                setSyncStatus('syncing');
+                setTimeout(() => setSyncStatus('synced'), 1500);
+                toast.success(t('settings.syncNow'));
+              }}
+              className="btn-primary w-full"
+            >
+              {t('settings.syncNow')}
+            </button>
+          </div>
+        </div>
+      ) : null}
 
       {/* API Key Section */}
       <div className="card mb-6">

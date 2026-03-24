@@ -239,6 +239,43 @@ const en = {
   'settings.fetchLogo': 'Fetch logo',
   'settings.uploadLogo': 'Upload',
   'settings.removeLogo': 'Remove',
+
+  // Login
+  'login.subtitle': 'Sync your work across devices',
+  'login.serverUrl': 'PocketBase Server URL',
+  'login.connect': 'Connect',
+  'login.connected': 'Connected',
+  'login.connectionFailed': 'Could not connect to server. Check the URL.',
+  'login.signInWithGoogle': 'Sign in with Google',
+  'login.signingIn': 'Signing in...',
+  'login.loginFailed': 'Login failed. Try again.',
+  'login.continueOffline': 'Continue without sync',
+
+  // Sync & Account
+  'settings.sync': 'Sync & Account',
+  'settings.pbUrl': 'PocketBase URL',
+  'settings.syncStatus': 'Status',
+  'settings.syncNow': 'Sync now',
+  'settings.loggedInAs': 'Logged in as',
+  'settings.logout': 'Log out',
+  'settings.loginToSync': 'Log in to sync',
+  'sync.synced': 'Synced',
+  'sync.syncing': 'Syncing...',
+  'sync.offline': 'Offline',
+  'sync.error': 'Sync error',
+  'sync.unconfigured': 'Not configured',
+
+  // Sharing
+  'share.title': 'Share Job',
+  'share.emailPlaceholder': 'Colleague\'s email',
+  'share.role': 'Role',
+  'share.viewer': 'Can view',
+  'share.editor': 'Can edit',
+  'share.share': 'Share',
+  'share.sharedWith': 'Shared with',
+  'share.remove': 'Remove',
+  'share.userNotFound': 'User not found. They need to create an account first.',
+  'share.sharedWithMe': 'Shared with me',
 } as const;
 
 export type TranslationKey = keyof typeof en;

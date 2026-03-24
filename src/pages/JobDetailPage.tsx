@@ -15,6 +15,8 @@ import PanelScheduleEditor from '../components/PanelScheduleEditor';
 import type { Task } from '../types';
 import { computeImageHash } from '../utils/imageHash';
 import MapTileBackground from '../components/MapTileBackground';
+import ShareJob from '../components/ShareJob';
+import { useAuth } from '../contexts/AuthContext';
 
 interface JobDetailPageProps {
   apiKey: string | null;
@@ -29,6 +31,7 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
   const { photos, addPhoto, updatePhotoExtraction, deletePhoto } = usePhotos(jobId || null);
   const { analyzePanel, explainTask } = useClaude(apiKey);
   const { savedContacts, refresh: refreshContacts } = useSavedContacts();
+  const { isAuthenticated } = useAuth();
   const { items: shoppingItems, addItem: addShoppingItem, updateItem: updateShoppingItem, deleteItem: deleteShoppingItem } = useShoppingList(jobId || null);
   const { schedules: panelSchedules, addSchedule: addPanelSchedule, updateSchedule: updatePanelSchedule, deleteSchedule: deletePanelSchedule } = usePanelSchedules(jobId || null);
 
@@ -36,6 +39,7 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
   const [showEditJob, setShowEditJob] = useState(false);
   const [showAddTask, setShowAddTask] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
+  const [showShareModal, setShowShareModal] = useState(false);
   const [analyzingPhotoIds, setAnalyzingPhotoIds] = useState<Set<string>>(new Set());
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [showCompleted, setShowCompleted] = useState(false);
@@ -332,6 +336,14 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
             </div>
           </div>
           <div className="flex gap-2">
+            {isAuthenticated && (
+              <button onClick={() => setShowShareModal(true)} className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors flex items-center gap-2">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
+                </svg>
+                {t('share.share')}
+              </button>
+            )}
             <button onClick={() => setShowEditJob(true)} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2">
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
@@ -629,6 +641,9 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
           )}
         </div>
       </div>
+
+      {/* Share Modal */}
+      <ShareJob jobId={job.id} isOpen={showShareModal} onClose={() => setShowShareModal(false)} />
 
       {/* Modals */}
       {showEditJob && (
