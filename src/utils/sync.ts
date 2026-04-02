@@ -30,6 +30,14 @@ let syncQueue: SyncQueueItem[] = [];
 let syncTimer: ReturnType<typeof setTimeout> | null = null;
 let isSyncing = false;
 
+// Track PB IDs we just pushed — ignore realtime events for these (prevents duplicates)
+const recentlyPushedPBIds = new Set<string>();
+function markAsPushed(pbId: string): void {
+  recentlyPushedPBIds.add(pbId);
+  // Clear after 5 seconds — enough time for the realtime event to arrive and be ignored
+  setTimeout(() => recentlyPushedPBIds.delete(pbId), 5000);
+}
+
 // Status listeners
 type SyncStatusListener = (status: 'idle' | 'syncing' | 'synced' | 'error') => void;
 const statusListeners: Set<SyncStatusListener> = new Set();
@@ -84,13 +92,22 @@ async function processSyncQueue(): Promise<void> {
       await pushRecord(item);
     } catch (err) {
       // Log detailed error data for debugging
-      const pbErr = err as { data?: Record<string, unknown>; response?: Record<string, unknown> };
+      const pbErr = err as { status?: number; data?: Record<string, unknown>; response?: Record<string, unknown> };
       console.warn(`[Sync] Failed to push ${item.collection}/${item.local_id}:`, err, 'Data:', pbErr?.data || pbErr?.response);
-      item.retries++;
-      if (item.retries < 5) {
+
+      // If 404, the PB record was deleted — clear pb_id so it creates a new one
+      if (pbErr?.status === 404) {
+        console.log(`[Sync] Record not found in PB, clearing pb_id for ${item.collection}/${item.local_id}`);
+        await clearPBId(item.collection, item.local_id);
+        item.retries = 0; // Reset retries — will create fresh on next attempt
         failed.push(item);
       } else {
-        console.error(`[Sync] Giving up on ${item.collection}/${item.local_id} after 5 retries`);
+        item.retries++;
+        if (item.retries < 5) {
+          failed.push(item);
+        } else {
+          console.error(`[Sync] Giving up on ${item.collection}/${item.local_id} after 5 retries`);
+        }
       }
     }
   }
@@ -130,7 +147,7 @@ async function pushRecord(item: SyncQueueItem): Promise<void> {
   const data = preparePBData(item.collection, localRecord);
 
   // Resolve job relation for child collections
-  const childCollections = ['tasks', 'photos', 'shopping_items', 'panel_schedules', 'chat_messages'];
+  const childCollections = ['tasks', 'photos', 'shopping_list', 'panel_schedules', 'chat_messages'];
   if (childCollections.includes(item.collection) && localRecord.job_id) {
     // Look up the parent job's PB ID
     const parentJob = await getLocalRecord('jobs', localRecord.job_id);
@@ -170,7 +187,8 @@ async function pushRecord(item: SyncQueueItem): Promise<void> {
       result = await pb.collection(pbCollection).create(data);
     }
 
-    // Write back pb_id to IndexedDB
+    // Write back pb_id to IndexedDB and mark as recently pushed
+    markAsPushed(result.id);
     await updateLocalPBId(item.collection, item.local_id, result.id);
   }
 
@@ -247,14 +265,22 @@ export function stopRealtimeSync(): void {
 
 /**
  * Handle a real-time event from PocketBase.
+ * Skips events caused by our own pushes (owner field matches current user for creates).
  */
 async function handleRealtimeEvent(collection: string, action: string, record: Record<string, unknown>): Promise<void> {
+  const pb = getPBSync();
+  const userId = pb?.authStore.record?.id;
+
+  // Skip events for records we just pushed — prevents duplicates from our own echoes
+  if (recentlyPushedPBIds.has(record.id as string)) {
+    return;
+  }
+
   console.log(`[Sync RT] ${action} on ${collection}:`, record.id);
 
   if (action === 'delete') {
     await deleteLocalByPBId(collection, record.id as string);
   } else {
-    // Create or update
     await upsertLocalFromPB(collection, record);
   }
 
@@ -315,24 +341,52 @@ export async function fullSync(): Promise<{ success: boolean; counts: Record<str
   notifyStatus('syncing');
   const counts: Record<string, number> = {};
 
-  const collections = ['jobs', 'tasks', 'photos', 'shopping_list', 'panel_schedules',
-                       'chat_messages', 'saved_contacts', 'knowledge_base'];
+  const userId = pb.authStore.record?.id;
+
+  // Phase 1: Pull only the OWNER's data (not shared)
+  const ownerCollections = ['jobs', 'saved_contacts', 'knowledge_base'];
+  const childCollections = ['tasks', 'photos', 'shopping_list', 'panel_schedules', 'chat_messages'];
 
   try {
-    for (const collection of collections) {
+    // Pull owner collections with filter
+    for (const collection of ownerCollections) {
       const pbCollection = mapCollectionName(collection);
       try {
-        const records = await pb.collection(pbCollection).getFullList();
+        const filter = userId ? `owner = "${userId}"` : '';
+        const records = await pb.collection(pbCollection).getFullList({ filter });
         counts[collection] = records.length;
 
         for (const record of records) {
           await upsertLocalFromPB(collection, record as unknown as Record<string, unknown>);
         }
-
         emitSyncUpdate(collection);
       } catch (err) {
         console.warn(`[Sync] Failed to pull ${pbCollection}:`, err);
-        counts[collection] = -1; // error indicator
+        counts[collection] = -1;
+      }
+    }
+
+    // Pull child data only for owner's jobs
+    const ownedJobPbIds = await getOwnedJobPbIds();
+    for (const collection of childCollections) {
+      const pbCollection = mapCollectionName(collection);
+      try {
+        let allRecords: any[] = [];
+        for (const jobPbId of ownedJobPbIds) {
+          const records = await pb.collection(pbCollection).getFullList({
+            filter: `job = "${jobPbId}"`,
+          });
+          allRecords = allRecords.concat(records);
+        }
+        counts[collection] = allRecords.length;
+
+        for (const record of allRecords) {
+          await upsertLocalFromPB(collection, record as unknown as Record<string, unknown>);
+        }
+        emitSyncUpdate(collection);
+      } catch (err) {
+        console.warn(`[Sync] Failed to pull ${pbCollection}:`, err);
+        counts[collection] = -1;
       }
     }
 
@@ -498,7 +552,7 @@ function preparePBData(collection: string, record: any): Record<string, unknown>
       data.quantity = record.quantity || 1;
       data.unit = record.unit || 'st';
       data.checked = record.checked || false;
-      data.parent_item_id = record.parent_item_id || '';
+      if (record.parent_item_id) data.parent_item_id = record.parent_item_id;
       break;
 
     case 'panel_schedules':
@@ -549,6 +603,33 @@ async function updateLocalPBId(collection: string, localId: string, pbId: string
       if (record) {
         record.pb_id = pbId;
         record._dirty = false;
+        const putReq = store.put(record);
+        putReq.onsuccess = () => {
+          console.log(`[Sync] Set pb_id=${pbId} on ${collection}/${localId}`);
+          resolve();
+        };
+        putReq.onerror = () => reject(putReq.error);
+      } else {
+        console.warn(`[Sync] updateLocalPBId: record ${collection}/${localId} not found`);
+        resolve();
+      }
+    };
+    getReq.onerror = () => reject(getReq.error);
+  });
+}
+
+async function clearPBId(collection: string, localId: string): Promise<void> {
+  const db = await import('./db');
+  const dbInstance = await db.getDB();
+  return new Promise((resolve, reject) => {
+    const tx = dbInstance.transaction(collection, 'readwrite');
+    const store = tx.objectStore(collection);
+    const getReq = store.get(localId);
+    getReq.onsuccess = () => {
+      const record = getReq.result;
+      if (record) {
+        delete record.pb_id;
+        record._dirty = true;
         store.put(record);
       }
       resolve();
@@ -573,6 +654,23 @@ async function clearDirtyFlag(collection: string, localId: string): Promise<void
       resolve();
     };
     getReq.onerror = () => reject(getReq.error);
+  });
+}
+
+async function getOwnedJobPbIds(): Promise<string[]> {
+  const db = await import('./db');
+  const dbInstance = await db.getDB();
+  return new Promise((resolve, reject) => {
+    const tx = dbInstance.transaction('jobs', 'readonly');
+    const store = tx.objectStore('jobs');
+    const req = store.getAll();
+    req.onsuccess = () => {
+      const owned = req.result
+        .filter((j: any) => j.pb_id && !j._shared)
+        .map((j: any) => j.pb_id);
+      resolve(owned);
+    };
+    req.onerror = () => reject(req.error);
   });
 }
 
@@ -623,8 +721,39 @@ async function upsertLocalFromPB(collection: string, pbRecord: Record<string, un
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
   });
+  // Match by pb_id first
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const existing = allRecords.find((r: any) => r.pb_id === pbRecord.id);
+  let existing = allRecords.find((r: any) => r.pb_id === pbRecord.id);
+
+  // Fallback dedup: find dirty local record without pb_id that matches content
+  // This handles the race condition where RT event arrives before push completes
+  if (!existing) {
+    if (collection === 'jobs') {
+      existing = allRecords.find((r: any) =>
+        !r.pb_id && r._dirty && r.name === pbRecord.name && r.address === (pbRecord.address || '')
+      );
+    } else if (collection === 'photos') {
+      existing = allRecords.find((r: any) =>
+        !r.pb_id && r._dirty && r.image_hash && r.image_hash === pbRecord.image_hash
+      );
+    } else if (collection === 'tasks') {
+      existing = allRecords.find((r: any) =>
+        !r.pb_id && r._dirty && r.title === pbRecord.title
+      );
+    } else if (collection === 'saved_contacts') {
+      existing = allRecords.find((r: any) =>
+        !r.pb_id && r._dirty && r.name === pbRecord.name && r.role === pbRecord.role
+      );
+    } else {
+      // Generic: match any dirty record without pb_id with same name
+      existing = allRecords.find((r: any) =>
+        !r.pb_id && r._dirty && r.name === pbRecord.name
+      );
+    }
+    if (existing) {
+      console.log(`[Sync] Dedup match for ${collection} — linking local ${existing.id} to pb_id ${pbRecord.id}`);
+    }
+  }
 
   // Convert PB record to local format
   const localData = convertPBToLocal(collection, pbRecord);
@@ -636,7 +765,9 @@ async function upsertLocalFromPB(collection: string, pbRecord: Record<string, un
   // Resolve PB job ID → local job ID for child collections
   const childCollections = ['tasks', 'photos', 'shopping_list', 'panel_schedules', 'chat_messages'];
   if (childCollections.includes(collection) && localData.job_id) {
+    const originalJobId = localData.job_id;
     localData.job_id = await resolveJobId(localData.job_id as string);
+    console.log(`[Sync] Resolved job_id for ${collection}: ${originalJobId} → ${localData.job_id}`);
   }
 
   if (existing) {
@@ -696,8 +827,20 @@ function convertPBToLocal(collection: string, pbRecord: Record<string, unknown>)
   if (collection === 'saved_contacts' && typeof data.addresses === 'string') {
     try { data.addresses = JSON.parse(data.addresses); } catch { data.addresses = []; }
   }
-  if (collection === 'photos' && typeof data.extracted_info === 'string') {
-    try { data.extracted_info = JSON.parse(data.extracted_info); } catch { data.extracted_info = undefined; }
+  if (collection === 'photos') {
+    if (typeof data.extracted_info === 'string') {
+      try { data.extracted_info = JSON.parse(data.extracted_info); } catch { data.extracted_info = undefined; }
+    }
+    // PB may return {} as empty object — keep as-is if it's already an object
+    if (data.extracted_info && typeof data.extracted_info === 'object' && Object.keys(data.extracted_info as object).length === 0) {
+      data.extracted_info = undefined;
+    }
+  }
+
+  // Build PB file URL for photos that have an image file
+  if (collection === 'photos' && pbRecord.image && pbRecord.id && pbRecord.collectionId) {
+    const pbUrl = getPBSync()?.baseURL || '';
+    data.image_url = `${pbUrl}/api/files/${pbRecord.collectionId}/${pbRecord.id}/${pbRecord.image}`;
   }
 
   // Map PB relation field 'job' → local 'job_id'
