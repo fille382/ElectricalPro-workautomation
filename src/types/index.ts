@@ -77,6 +77,7 @@ export interface Photo {
   job_id: string;
   task_id?: string;
   image_data: Blob;
+  image_url?: string; // PB file URL for shared/synced photos
   image_hash?: string;
   extracted_info?: ElectricalPanelInfo;
   user_notes: string;

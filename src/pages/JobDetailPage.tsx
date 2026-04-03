@@ -461,6 +461,8 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
                 onToggle={(id, checked) => updateShoppingItem(id, { checked })}
                 onDelete={deleteShoppingItem}
                 onUpdateQuantity={(id, quantity) => updateShoppingItem(id, { quantity })}
+                onAddItem={addShoppingItem}
+                jobId={jobId}
               />
             )}
 

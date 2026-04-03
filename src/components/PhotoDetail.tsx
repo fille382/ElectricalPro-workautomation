@@ -27,16 +27,17 @@ export default function PhotoDetail({ photo, cachedPhotoURL, onClose, apiKey, on
       return;
     }
 
-    if (!photo.image_data) {
+    if (photo.image_data instanceof Blob && photo.image_data.size > 0) {
+      let mounted = true;
+      blobToDataURL(photo.image_data)
+        .then((url) => { if (mounted) setPhotoURL(url); })
+        .catch(() => { if (mounted) setPhotoURL(photo.image_url || null); });
+      return () => { mounted = false; };
+    } else if (photo.image_url) {
+      setPhotoURL(photo.image_url);
+    } else {
       setPhotoURL(null);
-      return;
     }
-
-    let mounted = true;
-    blobToDataURL(photo.image_data)
-      .then((url) => { if (mounted) setPhotoURL(url); })
-      .catch(() => { if (mounted) setPhotoURL(null); });
-    return () => { mounted = false; };
   }, [photo.id, cachedPhotoURL]);
 
   const handleAnalyzeNow = async () => {
