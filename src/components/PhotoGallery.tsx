@@ -21,9 +21,13 @@ function PhotoThumbnail({ photo, onClick, onTextClick, isAnalyzing, onDelete, ta
 
   useEffect(() => {
     let mounted = true;
-    blobToDataURL(photo.image_data)
-      .then((url) => { if (mounted) setImageUrl(url); })
-      .catch(() => { if (mounted) setImageUrl(null); });
+    if (photo.image_data instanceof Blob && photo.image_data.size > 0) {
+      blobToDataURL(photo.image_data)
+        .then((url) => { if (mounted) setImageUrl(url); })
+        .catch(() => { if (mounted) setImageUrl(photo.image_url || null); });
+    } else if (photo.image_url) {
+      setImageUrl(photo.image_url);
+    }
     return () => { mounted = false; };
   }, [photo.id]);
 

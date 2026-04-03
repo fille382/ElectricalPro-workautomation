@@ -43,6 +43,8 @@ export interface Job {
   lat?: number;
   lon?: number;
   status: 'active' | 'completed' | 'archived';
+  _shared?: boolean;
+  _share_role?: 'viewer' | 'editor';
   created_at: number;
   updated_at: number;
 }
@@ -75,6 +77,7 @@ export interface Photo {
   job_id: string;
   task_id?: string;
   image_data: Blob;
+  image_url?: string; // PB file URL for shared/synced photos
   image_hash?: string;
   extracted_info?: ElectricalPanelInfo;
   user_notes: string;

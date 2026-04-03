@@ -85,9 +85,21 @@ export default function ShareJob({ jobId, isOpen, onClose }: ShareJobProps) {
 
       const targetUser = users[0];
 
+      // Resolve local job ID → PB job ID
+      const db = await import('../utils/db');
+      const allJobs = await db.getJobs();
+      const localJob = allJobs.find(j => j.id === jobId);
+      const pbJobId = localJob?.pb_id || jobId;
+
+      if (!localJob?.pb_id) {
+        setError('Jobbet har inte synkats ännu. Tryck Sync först.');
+        setLoading(false);
+        return;
+      }
+
       // Create the share record
       await pb.collection('job_shares').create({
-        job: jobId,
+        job: pbJobId,
         user: targetUser.id,
         user_email: targetUser.email,
         role,

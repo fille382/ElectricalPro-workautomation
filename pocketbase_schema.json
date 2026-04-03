@@ -1,0 +1,157 @@
+[
+  {
+    "name": "jobs",
+    "type": "base",
+    "schema": [
+      { "name": "name", "type": "text", "required": true },
+      { "name": "address", "type": "text" },
+      { "name": "description", "type": "text" },
+      { "name": "contacts", "type": "json" },
+      { "name": "lat", "type": "number" },
+      { "name": "lon", "type": "number" },
+      { "name": "status", "type": "text", "required": true },
+      { "name": "owner", "type": "relation", "options": { "collectionId": "_pb_users_auth_", "maxSelect": 1 } }
+    ],
+    "listRule": "owner = @request.auth.id || @request.auth.id ?= @collection.job_shares.user.id",
+    "viewRule": "owner = @request.auth.id || @request.auth.id ?= @collection.job_shares.user.id",
+    "createRule": "@request.auth.id != ''",
+    "updateRule": "owner = @request.auth.id",
+    "deleteRule": "owner = @request.auth.id"
+  },
+  {
+    "name": "tasks",
+    "type": "base",
+    "schema": [
+      { "name": "job", "type": "relation", "required": true, "options": { "collectionId": "jobs", "maxSelect": 1, "cascadeDelete": true } },
+      { "name": "title", "type": "text", "required": true },
+      { "name": "description", "type": "text" },
+      { "name": "status", "type": "text", "required": true },
+      { "name": "notes", "type": "text" },
+      { "name": "source_photo_id", "type": "text" },
+      { "name": "parent_task_id", "type": "text" }
+    ],
+    "listRule": "@request.auth.id != ''",
+    "viewRule": "@request.auth.id != ''",
+    "createRule": "@request.auth.id != ''",
+    "updateRule": "@request.auth.id != ''",
+    "deleteRule": "@request.auth.id != ''"
+  },
+  {
+    "name": "photos",
+    "type": "base",
+    "schema": [
+      { "name": "job", "type": "relation", "required": true, "options": { "collectionId": "jobs", "maxSelect": 1, "cascadeDelete": true } },
+      { "name": "task_id", "type": "text" },
+      { "name": "image", "type": "file", "options": { "maxSelect": 1, "maxSize": 10485760, "mimeTypes": ["image/jpeg", "image/png", "image/webp"] } },
+      { "name": "image_hash", "type": "text" },
+      { "name": "extracted_info", "type": "json" },
+      { "name": "user_notes", "type": "text" }
+    ],
+    "listRule": "@request.auth.id != ''",
+    "viewRule": "@request.auth.id != ''",
+    "createRule": "@request.auth.id != ''",
+    "updateRule": "@request.auth.id != ''",
+    "deleteRule": "@request.auth.id != ''"
+  },
+  {
+    "name": "saved_contacts",
+    "type": "base",
+    "schema": [
+      { "name": "owner", "type": "relation", "required": true, "options": { "collectionId": "_pb_users_auth_", "maxSelect": 1 } },
+      { "name": "name", "type": "text", "required": true },
+      { "name": "phone", "type": "text" },
+      { "name": "email", "type": "email" },
+      { "name": "role", "type": "text" },
+      { "name": "addresses", "type": "json" }
+    ],
+    "listRule": "owner = @request.auth.id",
+    "viewRule": "owner = @request.auth.id",
+    "createRule": "@request.auth.id != ''",
+    "updateRule": "owner = @request.auth.id",
+    "deleteRule": "owner = @request.auth.id"
+  },
+  {
+    "name": "chat_messages",
+    "type": "base",
+    "schema": [
+      { "name": "job", "type": "relation", "required": true, "options": { "collectionId": "jobs", "maxSelect": 1, "cascadeDelete": true } },
+      { "name": "role", "type": "text", "required": true },
+      { "name": "content", "type": "text", "required": true }
+    ],
+    "listRule": "@request.auth.id != ''",
+    "viewRule": "@request.auth.id != ''",
+    "createRule": "@request.auth.id != ''",
+    "updateRule": "@request.auth.id != ''",
+    "deleteRule": "@request.auth.id != ''"
+  },
+  {
+    "name": "shopping_list",
+    "type": "base",
+    "schema": [
+      { "name": "job", "type": "relation", "required": true, "options": { "collectionId": "jobs", "maxSelect": 1, "cascadeDelete": true } },
+      { "name": "name", "type": "text", "required": true },
+      { "name": "e_number", "type": "text" },
+      { "name": "article_number", "type": "text" },
+      { "name": "manufacturer", "type": "text" },
+      { "name": "category", "type": "text" },
+      { "name": "quantity", "type": "number", "required": true },
+      { "name": "unit", "type": "text" },
+      { "name": "checked", "type": "bool" },
+      { "name": "parent_item_id", "type": "text" }
+    ],
+    "listRule": "@request.auth.id != ''",
+    "viewRule": "@request.auth.id != ''",
+    "createRule": "@request.auth.id != ''",
+    "updateRule": "@request.auth.id != ''",
+    "deleteRule": "@request.auth.id != ''"
+  },
+  {
+    "name": "panel_schedules",
+    "type": "base",
+    "schema": [
+      { "name": "job", "type": "relation", "required": true, "options": { "collectionId": "jobs", "maxSelect": 1, "cascadeDelete": true } },
+      { "name": "name", "type": "text", "required": true },
+      { "name": "rows", "type": "json" },
+      { "name": "fault_contact", "type": "text" },
+      { "name": "source_photo_id", "type": "text" }
+    ],
+    "listRule": "@request.auth.id != ''",
+    "viewRule": "@request.auth.id != ''",
+    "createRule": "@request.auth.id != ''",
+    "updateRule": "@request.auth.id != ''",
+    "deleteRule": "@request.auth.id != ''"
+  },
+  {
+    "name": "knowledge_base",
+    "type": "base",
+    "schema": [
+      { "name": "owner", "type": "relation", "required": true, "options": { "collectionId": "_pb_users_auth_", "maxSelect": 1 } },
+      { "name": "question", "type": "text" },
+      { "name": "keywords", "type": "json" },
+      { "name": "answer", "type": "text" },
+      { "name": "category", "type": "text" },
+      { "name": "source", "type": "text" },
+      { "name": "useCount", "type": "number" }
+    ],
+    "listRule": "owner = @request.auth.id",
+    "viewRule": "owner = @request.auth.id",
+    "createRule": "@request.auth.id != ''",
+    "updateRule": "owner = @request.auth.id",
+    "deleteRule": "owner = @request.auth.id"
+  },
+  {
+    "name": "job_shares",
+    "type": "base",
+    "schema": [
+      { "name": "job", "type": "relation", "required": true, "options": { "collectionId": "jobs", "maxSelect": 1, "cascadeDelete": true } },
+      { "name": "user", "type": "relation", "required": true, "options": { "collectionId": "_pb_users_auth_", "maxSelect": 1 } },
+      { "name": "user_email", "type": "email" },
+      { "name": "role", "type": "text", "required": true }
+    ],
+    "listRule": "@request.auth.id != ''",
+    "viewRule": "@request.auth.id != ''",
+    "createRule": "@request.auth.id != ''",
+    "updateRule": "@request.auth.id != ''",
+    "deleteRule": "@request.auth.id != ''"
+  }
+]
