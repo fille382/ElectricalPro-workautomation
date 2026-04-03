@@ -268,9 +268,6 @@ export function stopRealtimeSync(): void {
  * Skips events caused by our own pushes (owner field matches current user for creates).
  */
 async function handleRealtimeEvent(collection: string, action: string, record: Record<string, unknown>): Promise<void> {
-  const pb = getPBSync();
-  const userId = pb?.authStore.record?.id;
-
   // Skip events for records we just pushed — prevents duplicates from our own echoes
   if (recentlyPushedPBIds.has(record.id as string)) {
     return;

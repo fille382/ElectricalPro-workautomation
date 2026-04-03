@@ -19,7 +19,7 @@ function ProductSearch({ onAdd, onClose }: { onAdd: (product: CatalogProduct, qt
   const [searching, setSearching] = useState(false);
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const inputRef = useRef<HTMLInputElement>(null);
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
     inputRef.current?.focus();

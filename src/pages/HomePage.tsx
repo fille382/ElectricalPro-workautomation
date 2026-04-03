@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import toast from 'react-hot-toast';
 import { useJobs, useSavedContacts } from '../hooks/useIndexedDB';
@@ -16,7 +16,7 @@ export default function HomePage({ apiKey }: HomePageProps) {
   const { jobs, loading, createJob } = useJobs();
   const { savedContacts, refresh: refreshContacts } = useSavedContacts();
   const { t } = useTranslation();
-  const { isAuthenticated, isOnline, user } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const [showForm, setShowForm] = useState(false);
 
   const handleCreateJob = async (jobData: any) => {
