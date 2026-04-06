@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find D:programmeringelectrician-appsrc -type f -name *chat* -o -name *message* -o -name *conversation*)"
+    ]
+  }
+}
