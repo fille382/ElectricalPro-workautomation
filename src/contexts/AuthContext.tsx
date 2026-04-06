@@ -103,7 +103,10 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
   const login = useCallback(async (): Promise<boolean> => {
     try {
+      // authWithGoogle() redirects the page — it won't return
+      // If it does return null, it means redirect is in progress
       const authUser = await authWithGoogle();
+      if (!authUser) return true; // Redirect in progress, not an error
       if (authUser) {
         setUser(authUser);
         setSyncStatus('syncing');
