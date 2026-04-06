@@ -173,6 +173,18 @@ async function searchENummer(query, page = 1) {
 }
 
 async function insertProduct(product) {
+  // Check if product already exists
+  try {
+    const check = await fetch(`${PB_URL}/api/collections/products/records?filter=e_number="${product.e_number}"&perPage=1`, {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    const checkData = await check.json();
+    if (checkData.totalItems > 0) {
+      stats.duplicates++;
+      return false;
+    }
+  } catch {}
+
   const res = await fetch(`${PB_URL}/api/collections/products/records`, {
     method: 'POST',
     headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -182,10 +194,6 @@ async function insertProduct(product) {
   if (data.id) {
     stats.inserted++;
     return true;
-  }
-  if (data.data?.e_number?.code === 'validation_not_unique') {
-    stats.duplicates++;
-    return false;
   }
   stats.errors++;
   return false;
@@ -199,6 +207,7 @@ function formatProduct(row) {
     article_number: row.ArtikelNummer || '',
     manufacturer: (row.ManufacturerAlias || '').replace(/ AB$| Sverige AB$| Sweden AB$/, ''),
     category: row.ProductGroupName2 || '',
+    product_id: row.Id || 0,
   };
 }
 

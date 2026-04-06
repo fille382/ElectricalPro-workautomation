@@ -20,6 +20,7 @@ function ProductSearch({ onAdd, onClose }: { onAdd: (product: CatalogProduct, qt
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const inputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const searchIdRef = useRef(0); // Track search ID to ignore stale results
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -30,6 +31,7 @@ function ProductSearch({ onAdd, onClose }: { onAdd: (product: CatalogProduct, qt
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (value.trim().length < 2) { setResults([]); return; }
     debounceRef.current = setTimeout(async () => {
+      const thisSearchId = ++searchIdRef.current;
       setSearching(true);
       const q = value.trim();
       const words = q.split(/\s+/).filter(w => w.length >= 2);
@@ -52,6 +54,7 @@ function ProductSearch({ onAdd, onClose }: { onAdd: (product: CatalogProduct, qt
             a: p.article_number || '',
             m: p.manufacturer || '',
             c: p.category || '',
+            pid: p.product_id || 0,
           }));
         } catch {
           // PB search failed, fall through to e-nummersok
@@ -78,8 +81,20 @@ function ProductSearch({ onAdd, onClose }: { onAdd: (product: CatalogProduct, qt
           return bScore - aScore;
         });
       }
-      setResults(r.slice(0, 15));
-      setSearching(false);
+      // Deduplicate by E-number — prefer entries with product image (pid)
+      const byE = new Map<string, CatalogProduct>();
+      for (const p of r) {
+        const existing = byE.get(p.e);
+        if (!existing || (p.pid && !existing.pid)) {
+          byE.set(p.e, p);
+        }
+      }
+      r = Array.from(byE.values());
+      // Only update if this is still the latest search
+      if (thisSearchId === searchIdRef.current) {
+        setResults(r.slice(0, 15));
+        setSearching(false);
+      }
     }, 300);
   };
 
@@ -121,42 +136,50 @@ function ProductSearch({ onAdd, onClose }: { onAdd: (product: CatalogProduct, qt
           {results.length === 0 && query.length < 2 && (
             <p className="text-center text-gray-400 py-8 text-sm">Skriv minst 2 tecken för att söka</p>
           )}
-          {results.map(product => (
-            <div key={product.e} className="flex items-center gap-2 p-2.5 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors group">
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{product.n}</p>
-                <div className="flex flex-wrap gap-1.5 mt-0.5">
-                  <span className="text-xs px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 rounded font-mono">
-                    E-nr: {product.e}
-                  </span>
-                  {product.a && (
-                    <span className="text-xs px-1.5 py-0.5 bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400 rounded font-mono">
-                      {product.a}
+          {results.map(product => {
+            const imgUrl = product.pid ? `https://www.e-nummersok.se/thumb/id/${product.pid}/BILD1/100/100` : null;
+            return (
+              <div key={product.e} className="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700/50 transition-colors border border-transparent hover:border-gray-200 dark:hover:border-gray-600">
+                {imgUrl && (
+                  <div className="w-12 h-12 flex-shrink-0 rounded bg-white dark:bg-gray-700 overflow-hidden border border-gray-200 dark:border-gray-600">
+                    <img src={imgUrl} alt="" className="w-full h-full object-contain" loading="lazy" onError={(e) => { (e.target as HTMLImageElement).parentElement!.style.display = 'none'; }} />
+                  </div>
+                )}
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{product.n}</p>
+                  <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                    <span className="text-xs px-1.5 py-0.5 bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 rounded font-mono">
+                      {product.e}
                     </span>
-                  )}
-                  <span className="text-xs text-gray-500 dark:text-gray-400">{product.m}</span>
+                    {product.a && (
+                      <span className="text-xs text-gray-500 dark:text-gray-400 font-mono">{product.a}</span>
+                    )}
+                    <span className="text-xs text-gray-400 dark:text-gray-500">{product.m}</span>
+                  </div>
+                  {product.d && <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 line-clamp-1">{product.d}</p>}
                 </div>
-                {product.d && <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5 truncate">{product.d}</p>}
+                <div className="flex flex-col items-end gap-1.5 flex-shrink-0">
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setQty(product.e, getQty(product.e) - 1)}
+                      className="w-7 h-7 flex items-center justify-center rounded-lg bg-gray-200 dark:bg-gray-600 text-sm font-bold hover:bg-gray-300 dark:hover:bg-gray-500"
+                    >-</button>
+                    <span className="w-8 text-center text-sm font-semibold">{getQty(product.e)}</span>
+                    <button
+                      onClick={() => setQty(product.e, getQty(product.e) + 1)}
+                      className="w-7 h-7 flex items-center justify-center rounded-lg bg-gray-200 dark:bg-gray-600 text-sm font-bold hover:bg-gray-300 dark:hover:bg-gray-500"
+                    >+</button>
+                  </div>
+                  <button
+                    onClick={() => onAdd(product, getQty(product.e))}
+                    className="px-3 py-1.5 bg-blue-600 text-white text-xs font-semibold rounded-lg hover:bg-blue-700 transition-colors"
+                  >
+                    Lägg till
+                  </button>
+                </div>
               </div>
-              <div className="flex items-center gap-1 flex-shrink-0">
-                <button
-                  onClick={() => setQty(product.e, getQty(product.e) - 1)}
-                  className="w-6 h-6 flex items-center justify-center rounded bg-gray-200 dark:bg-gray-600 text-xs font-bold hover:bg-gray-300 dark:hover:bg-gray-500"
-                >-</button>
-                <span className="w-7 text-center text-sm font-medium">{getQty(product.e)}</span>
-                <button
-                  onClick={() => setQty(product.e, getQty(product.e) + 1)}
-                  className="w-6 h-6 flex items-center justify-center rounded bg-gray-200 dark:bg-gray-600 text-xs font-bold hover:bg-gray-300 dark:hover:bg-gray-500"
-                >+</button>
-              </div>
-              <button
-                onClick={() => onAdd(product, getQty(product.e))}
-                className="px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors flex-shrink-0"
-              >
-                Lägg till
-              </button>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </div>
     </div>

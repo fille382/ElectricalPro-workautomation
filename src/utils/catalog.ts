@@ -10,6 +10,7 @@ export interface CatalogProduct {
   a: string;  // Article number (manufacturer)
   m: string;  // Manufacturer
   c: string;  // Category
+  pid?: number; // Product ID (for image URL)
 }
 
 // Simple in-memory cache to avoid duplicate API calls
@@ -68,6 +69,7 @@ export async function searchCatalog(query: string, limit = 10): Promise<CatalogP
         a: r.ArtikelNummer || '',
         m: (r.ManufacturerAlias || '').replace(/ AB$| Sverige AB$| Sweden AB$/, ''),
         c: r.ProductGroupName2 || '',
+        pid: r.Id || 0,
       }));
 
     // Handle "direct hit" — API returns a URL instead of search results for exact E-number matches
