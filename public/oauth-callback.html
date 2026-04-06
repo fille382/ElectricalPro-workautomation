@@ -4,22 +4,21 @@
 <body>
 <p>Loggar in...</p>
 <script>
-  // Google redirects here with ?code=...&state=...
-  // Store in localStorage so the parent window can pick it up
   var params = new URLSearchParams(window.location.search);
   var code = params.get('code');
   var state = params.get('state');
 
   if (code) {
-    // Store result in localStorage - parent window polls for this
+    // Store result in localStorage
     localStorage.setItem('pb_oauth_result', JSON.stringify({
       code: code,
       state: state
     }));
-    document.body.innerHTML = '<p>Inloggning lyckades! Fönstret stängs...</p>';
-    setTimeout(function() { window.close(); }, 1000);
+    // Redirect back to app root (same origin)
+    var base = window.location.origin + window.location.pathname.replace('oauth-callback.html', '');
+    window.location.href = base + '#/';
   } else {
-    document.body.innerHTML = '<p>Inloggning misslyckades. Stäng fönstret och försök igen.</p>';
+    document.body.innerHTML = '<p>Inloggning misslyckades. <a href="#/">Tillbaka</a></p>';
   }
 </script>
 </body>

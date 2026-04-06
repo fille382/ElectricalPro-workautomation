@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
-import { getAuthUser, authWithGoogle, logout as pbLogout, isOnline as checkOnline, isPBConfigured, testConnection } from '../utils/pocketbase';
+import { getAuthUser, authWithGoogle, completeOAuthIfPending, logout as pbLogout, isOnline as checkOnline, isPBConfigured, testConnection } from '../utils/pocketbase';
 import { getSettings, saveSettings } from '../utils/db';
 
 interface AuthUser {
@@ -48,7 +48,13 @@ export function AuthProvider({ children }: AuthProviderProps) {
       const settings = await getSettings();
       if (mounted) setPbUrlState(settings.pocketbase_url || null);
 
-      const authUser = await getAuthUser();
+      // Check if returning from OAuth redirect
+      const oauthUser = await completeOAuthIfPending();
+      if (mounted && oauthUser) {
+        setUser(oauthUser);
+      }
+
+      const authUser = oauthUser || await getAuthUser();
       if (mounted && authUser) {
         setUser(authUser);
         const online = await checkOnline();
