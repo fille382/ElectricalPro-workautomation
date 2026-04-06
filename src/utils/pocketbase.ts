@@ -122,68 +122,74 @@ export async function isOnline(): Promise<boolean> {
  *
  * Flow:
  * 1. Get auth methods from PocketBase (REST, works with ngrok header)
- * 2. Open popup to Google login
- * 3. Google redirects to our oauth-callback.html on GitHub Pages
- * 4. Callback page stores code in localStorage
- * 5. We poll localStorage for the result (no SSE, no COOP issues)
- * 6. Exchange code for auth token via REST API
+ * Full-page redirect flow:
+ * 1. Save provider state to localStorage
+ * 2. Redirect to Google login (full page, no popup)
+ * 3. Google redirects back to our oauth-callback.html
+ * 4. Callback page stores code in localStorage and redirects to app
+ * 5. App detects code in localStorage and exchanges for auth token
  */
 export async function authWithGoogle(): Promise<{ id: string; email: string; name: string } | null> {
   const pb = await getPB();
   if (!pb) throw new Error('PocketBase not configured');
 
   try {
-    // Step 1: Get Google provider config
     const authMethods = await pb.collection('users').listAuthMethods();
     const google = authMethods.oauth2?.providers?.find((p: any) => p.name === 'google');
     if (!google) throw new Error('Google provider inte konfigurerad');
 
-    // Step 2: Build redirect URL to our callback page (same origin as app)
     const redirectUrl = window.location.origin + (import.meta.env.BASE_URL || '/') + 'oauth-callback.html';
+
+    // Save state for when we return from Google
+    localStorage.setItem('pb_oauth_pending', JSON.stringify({
+      codeVerifier: google.codeVerifier,
+      state: google.state,
+      redirectUrl,
+    }));
+
+    // Full-page redirect to Google — no popup!
     const authUrl = google.authURL + encodeURIComponent(redirectUrl);
+    window.location.href = authUrl;
 
-    // Clear any previous result
-    localStorage.removeItem('pb_oauth_result');
+    // Won't reach here
+    return null;
+  } catch (err) {
+    console.error('[PB] Google auth start failed:', err);
+    return null;
+  }
+}
 
-    // Step 3: Open popup
-    const popup = window.open(authUrl, 'oauth2-popup', 'width=600,height=700,scrollbars=yes,resizable=yes');
-    if (!popup) throw new Error('Popup blockerad. Tillåt popups för denna sida.');
+/**
+ * Complete OAuth2 login after returning from Google redirect.
+ * Called on app startup if localStorage has pending OAuth data.
+ */
+export async function completeOAuthIfPending(): Promise<{ id: string; email: string; name: string } | null> {
+  const resultStr = localStorage.getItem('pb_oauth_result');
+  const pendingStr = localStorage.getItem('pb_oauth_pending');
 
-    // Step 4: Poll localStorage for result (no SSE, no COOP needed)
-    const result = await new Promise<{ code: string; state: string }>((resolve, reject) => {
-      const timeout = setTimeout(() => {
-        cleanup();
-        reject(new Error('Inloggning tog för lång tid'));
-      }, 120000);
+  if (!resultStr || !pendingStr) return null;
 
-      const interval = setInterval(() => {
-        // Check localStorage for result from callback page
-        const stored = localStorage.getItem('pb_oauth_result');
-        if (stored) {
-          localStorage.removeItem('pb_oauth_result');
-          cleanup();
-          try { popup.close(); } catch {}
-          resolve(JSON.parse(stored));
-          return;
-        }
-      }, 500);
+  const result = JSON.parse(resultStr);
+  const pending = JSON.parse(pendingStr);
 
-      function cleanup() {
-        clearTimeout(timeout);
-        clearInterval(interval);
-      }
-    });
+  // Clean up
+  localStorage.removeItem('pb_oauth_result');
+  localStorage.removeItem('pb_oauth_pending');
 
-    // Step 5: Exchange code for auth token via REST (no SSE needed)
+  if (!result.code || !pending.codeVerifier) return null;
+
+  const pb = await getPB();
+  if (!pb) return null;
+
+  try {
     const authData = await pb.collection('users').authWithOAuth2Code(
       'google',
       result.code,
-      google.codeVerifier,
-      redirectUrl,
+      pending.codeVerifier,
+      pending.redirectUrl,
     );
     const user = authData.record;
 
-    // Step 6: Save auth info
     const currentSettings = await getSettings();
     await saveSettings({
       ...currentSettings,
@@ -199,7 +205,7 @@ export async function authWithGoogle(): Promise<{ id: string; email: string; nam
       name: user.name || user.email,
     };
   } catch (err) {
-    console.error('[PB] Google auth failed:', err);
+    console.error('[PB] OAuth code exchange failed:', err);
     return null;
   }
 }
