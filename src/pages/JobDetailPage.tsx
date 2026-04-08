@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import toast from 'react-hot-toast';
-import { useJobs, useTasks, usePhotos, useSavedContacts, useShoppingList, usePanelSchedules } from '../hooks/useIndexedDB';
+import { useJobs, useTasks, usePhotos, useSavedContacts, useShoppingList, usePanelSchedules, useReceipts, useInvoice, useStorageLocations, useStorageItems } from '../hooks/useIndexedDB';
 import { saveContactsFromJob } from '../utils/db';
 import { useClaude } from '../hooks/useClaude';
 import { useTranslation } from '../contexts/I18nContext';
@@ -12,8 +12,10 @@ import PhotoGallery from '../components/PhotoGallery';
 import JobChat from '../components/JobChat';
 import ShoppingList from '../components/ShoppingList';
 import PanelScheduleEditor from '../components/PanelScheduleEditor';
-import type { Task } from '../types';
+import InvoiceTab from '../components/InvoiceTab';
+import type { Task, ReceiptLineItem, StorageItem } from '../types';
 import { computeImageHash } from '../utils/imageHash';
+import { analyzeReceipt } from '../utils/claude';
 import MapTileBackground from '../components/MapTileBackground';
 import ShareJob from '../components/ShareJob';
 import { useAuth } from '../contexts/AuthContext';
@@ -34,8 +36,13 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
   const { isAuthenticated } = useAuth();
   const { items: shoppingItems, addItem: addShoppingItem, updateItem: updateShoppingItem, deleteItem: deleteShoppingItem } = useShoppingList(jobId || null);
   const { schedules: panelSchedules, addSchedule: addPanelSchedule, updateSchedule: updatePanelSchedule, deleteSchedule: deletePanelSchedule } = usePanelSchedules(jobId || null);
+  const { receipts, addReceipt } = useReceipts(jobId || null);
+  const { invoice, updateInvoice } = useInvoice(jobId || null);
+  const { locations: storageLocations, addLocation: addStorageLocation, deleteLocation: deleteStorageLocation } = useStorageLocations();
+  const { items: storageItems, addItem: addStorageItem, updateItem: updateStorageItem, deleteItem: deleteStorageItem } = useStorageItems();
 
-  const [activeTab, setActiveTab] = useState<'tasks' | 'shopping' | 'panels'>('tasks');
+  const [activeTab, setActiveTab] = useState<'tasks' | 'shopping' | 'panels' | 'invoice'>('tasks');
+  const [scanningReceipt, setScanningReceipt] = useState(false);
   const [showEditJob, setShowEditJob] = useState(false);
   const [showAddTask, setShowAddTask] = useState(false);
   const [showCamera, setShowCamera] = useState(false);
@@ -46,6 +53,69 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [taskExplanations, setTaskExplanations] = useState<Record<string, { explanation: string | null; loading: boolean; subtaskIds?: string[] }>>({});
   const groupRefs = useRef<Record<string, HTMLDivElement | null>>({});
+
+  const handleScanReceipt = async (imageBlob: Blob): Promise<ReceiptLineItem[] | null> => {
+    if (!apiKey || !jobId) return null;
+    setScanningReceipt(true);
+    try {
+      const result = await analyzeReceipt(imageBlob, apiKey, language);
+      if (result.items.length > 0) {
+        // Save receipt to IndexedDB
+        await addReceipt({
+          job_id: jobId,
+          store_name: result.store_name,
+          receipt_date: result.receipt_date,
+          image_data: imageBlob,
+          total_amount: result.total_amount,
+          items_extracted: result.items,
+        });
+        return result.items;
+      }
+      toast.error('Inga artiklar hittades på kvittot');
+      return null;
+    } catch (err) {
+      console.error('Receipt scan failed:', err);
+      toast.error('Kunde inte analysera kvittot');
+      return null;
+    } finally {
+      setScanningReceipt(false);
+    }
+  };
+
+  const handleMoveToStorage = async (item: typeof shoppingItems[0], locationId: string) => {
+    await addStorageItem({
+      location_id: locationId,
+      name: item.name,
+      e_number: item.e_number,
+      article_number: item.article_number,
+      manufacturer: item.manufacturer,
+      category: item.category,
+      quantity: item.quantity,
+      unit: item.unit,
+      price: item.price,
+      source_job_id: jobId,
+    });
+    await deleteShoppingItem(item.id);
+    toast.success(`${item.name} flyttad till lager`);
+  };
+
+  const handlePullFromStorage = async (storageItem: StorageItem) => {
+    if (!jobId) return;
+    await addShoppingItem({
+      job_id: jobId,
+      name: storageItem.name,
+      e_number: storageItem.e_number,
+      article_number: storageItem.article_number,
+      manufacturer: storageItem.manufacturer,
+      category: storageItem.category,
+      quantity: storageItem.quantity,
+      unit: storageItem.unit,
+      price: storageItem.price,
+      checked: false,
+    });
+    await deleteStorageItem(storageItem.id);
+    toast.success(`${storageItem.name} hämtad från lager`);
+  };
 
   const handleShowTasks = useCallback((photoId: string) => {
     setExpandedGroups((prev) => {
@@ -444,6 +514,15 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
                   </svg>
                   {t('panel.title')} ({panelSchedules.length})
                 </button>
+                <button
+                  onClick={() => setActiveTab('invoice')}
+                  className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors flex items-center gap-1.5 ${activeTab === 'invoice' ? 'bg-white dark:bg-gray-600 text-blue-900 dark:text-gray-100 shadow-sm' : 'text-gray-600 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200'}`}
+                >
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 7h6m0 10v-3m-3 3h.01M9 17h.01M9 14h.01M12 14h.01M15 11h.01M12 11h.01M9 11h.01M7 21h10a2 2 0 002-2V5a2 2 0 00-2-2H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                  </svg>
+                  {t('invoice.title')}
+                </button>
               </div>
               {activeTab === 'tasks' && (
                 <button onClick={() => setShowAddTask(true)} className="btn-primary text-sm flex items-center gap-2">
@@ -463,6 +542,29 @@ export default function JobDetailPage({ apiKey }: JobDetailPageProps) {
                 onUpdateQuantity={(id, quantity) => updateShoppingItem(id, { quantity })}
                 onAddItem={addShoppingItem}
                 jobId={jobId}
+                apiKey={apiKey}
+                onScanReceipt={handleScanReceipt}
+                scanningReceipt={scanningReceipt}
+                storageLocations={storageLocations}
+                storageItems={storageItems}
+                onMoveToStorage={handleMoveToStorage}
+                onPullFromStorage={handlePullFromStorage}
+                onAddStorageLocation={addStorageLocation}
+                onDeleteStorageLocation={deleteStorageLocation}
+                onUpdateStorageItem={updateStorageItem}
+                onDeleteStorageItem={deleteStorageItem}
+              />
+            )}
+
+            {activeTab === 'invoice' && (
+              <InvoiceTab
+                jobId={jobId!}
+                shoppingItems={shoppingItems}
+                receipts={receipts}
+                invoice={invoice}
+                onUpdateInvoice={updateInvoice}
+                jobName={job.name}
+                jobAddress={job.address}
               />
             )}
 

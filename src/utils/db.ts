@@ -1,8 +1,8 @@
-import type { Job, Task, Photo, AppSettings, SavedContact, JobContact, ChatMessage, KnowledgeEntry, ShoppingItem, PanelSchedule } from '../types';
+import type { Job, Task, Photo, AppSettings, SavedContact, JobContact, ChatMessage, KnowledgeEntry, ShoppingItem, PanelSchedule, Receipt, Invoice, StorageLocation, StorageItem } from '../types';
 import { queueSync } from './sync';
 
 const DB_NAME = 'electrician_app';
-const DB_VERSION = 7; // v7: adds sync fields support
+const DB_VERSION = 8; // v8: adds receipts, invoices, storage
 
 let db: IDBDatabase | null = null;
 
@@ -77,6 +77,29 @@ export async function initDB(): Promise<IDBDatabase> {
       if (!database.objectStoreNames.contains('panel_schedules')) {
         const panelStore = database.createObjectStore('panel_schedules', { keyPath: 'id' });
         panelStore.createIndex('job_id', 'job_id', { unique: false });
+      }
+
+      // Create receipts store
+      if (!database.objectStoreNames.contains('receipts')) {
+        const receiptStore = database.createObjectStore('receipts', { keyPath: 'id' });
+        receiptStore.createIndex('job_id', 'job_id', { unique: false });
+      }
+
+      // Create invoices store
+      if (!database.objectStoreNames.contains('invoices')) {
+        const invoiceStore = database.createObjectStore('invoices', { keyPath: 'id' });
+        invoiceStore.createIndex('job_id', 'job_id', { unique: false });
+      }
+
+      // Create storage locations store
+      if (!database.objectStoreNames.contains('storage_locations')) {
+        database.createObjectStore('storage_locations', { keyPath: 'id' });
+      }
+
+      // Create storage items store
+      if (!database.objectStoreNames.contains('storage_items')) {
+        const storageItemStore = database.createObjectStore('storage_items', { keyPath: 'id' });
+        storageItemStore.createIndex('location_id', 'location_id', { unique: false });
       }
     };
   });
@@ -789,6 +812,232 @@ export async function updateKnowledge(id: string, updates: Partial<KnowledgeEntr
       queueSync('knowledge_base', id, 'update');
       resolve();
     };
+  });
+}
+
+// ========== RECEIPT OPERATIONS ==========
+
+export async function getReceipts(jobId: string): Promise<Receipt[]> {
+  const database = await getDB();
+  return new Promise((resolve, reject) => {
+    const tx = database.transaction(['receipts'], 'readonly');
+    const request = tx.objectStore('receipts').index('job_id').getAll(jobId);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result.sort((a, b) => b.created_at - a.created_at));
+  });
+}
+
+export async function addReceipt(data: Omit<Receipt, 'id' | 'created_at'>): Promise<Receipt> {
+  const database = await getDB();
+  const receipt: Receipt = {
+    ...data,
+    id: `rcpt_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    _dirty: true,
+    created_at: Date.now(),
+  };
+  return new Promise((resolve, reject) => {
+    const tx = database.transaction(['receipts'], 'readwrite');
+    const request = tx.objectStore('receipts').add(receipt);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      queueSync('receipts', receipt.id, 'create');
+      resolve(receipt);
+    };
+  });
+}
+
+export async function deleteReceipt(id: string): Promise<void> {
+  const database = await getDB();
+  return new Promise((resolve, reject) => {
+    const tx = database.transaction(['receipts'], 'readwrite');
+    queueSync('receipts', id, 'delete');
+    const request = tx.objectStore('receipts').delete(id);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve();
+  });
+}
+
+// ========== INVOICE OPERATIONS ==========
+
+export async function getInvoice(jobId: string): Promise<Invoice | null> {
+  const database = await getDB();
+  return new Promise((resolve, reject) => {
+    const tx = database.transaction(['invoices'], 'readonly');
+    const request = tx.objectStore('invoices').index('job_id').getAll(jobId);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result[0] || null);
+  });
+}
+
+export async function createOrUpdateInvoice(jobId: string, updates: Partial<Invoice>): Promise<Invoice> {
+  const database = await getDB();
+  const existing = await getInvoice(jobId);
+
+  if (existing) {
+    const updated = { ...existing, ...updates, _dirty: true, id: existing.id, job_id: jobId, updated_at: Date.now() };
+    return new Promise((resolve, reject) => {
+      const tx = database.transaction(['invoices'], 'readwrite');
+      const request = tx.objectStore('invoices').put(updated);
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        queueSync('invoices', existing.id, 'update');
+        resolve(updated);
+      };
+    });
+  }
+
+  const invoice: Invoice = {
+    id: `inv_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    job_id: jobId,
+    markup_percentage: 30,
+    custom_line_items: [],
+    _dirty: true,
+    created_at: Date.now(),
+    updated_at: Date.now(),
+    ...updates,
+  };
+  return new Promise((resolve, reject) => {
+    const tx = database.transaction(['invoices'], 'readwrite');
+    const request = tx.objectStore('invoices').add(invoice);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      queueSync('invoices', invoice.id, 'create');
+      resolve(invoice);
+    };
+  });
+}
+
+// ========== STORAGE OPERATIONS ==========
+
+export async function getStorageLocations(): Promise<StorageLocation[]> {
+  const database = await getDB();
+  return new Promise((resolve, reject) => {
+    const tx = database.transaction(['storage_locations'], 'readonly');
+    const request = tx.objectStore('storage_locations').getAll();
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result);
+  });
+}
+
+export async function addStorageLocation(name: string): Promise<StorageLocation> {
+  const database = await getDB();
+  const loc: StorageLocation = {
+    id: `sloc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    name,
+    _dirty: true,
+    created_at: Date.now(),
+  };
+  return new Promise((resolve, reject) => {
+    const tx = database.transaction(['storage_locations'], 'readwrite');
+    const request = tx.objectStore('storage_locations').add(loc);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      queueSync('storage_locations', loc.id, 'create');
+      resolve(loc);
+    };
+  });
+}
+
+export async function updateStorageLocation(id: string, updates: Partial<StorageLocation>): Promise<void> {
+  const database = await getDB();
+  return new Promise((resolve, reject) => {
+    const tx = database.transaction(['storage_locations'], 'readwrite');
+    const store = tx.objectStore('storage_locations');
+    const getReq = store.get(id);
+    getReq.onerror = () => reject(getReq.error);
+    getReq.onsuccess = () => {
+      if (!getReq.result) { reject(new Error('Storage location not found')); return; }
+      const updated = { ...getReq.result, ...updates, _dirty: true, id };
+      const putReq = store.put(updated);
+      putReq.onerror = () => reject(putReq.error);
+      putReq.onsuccess = () => {
+        queueSync('storage_locations', id, 'update');
+        resolve();
+      };
+    };
+  });
+}
+
+export async function deleteStorageLocation(id: string): Promise<void> {
+  const database = await getDB();
+  // Also delete all items in this location
+  const items = await getStorageItems(id);
+  for (const item of items) {
+    await deleteStorageItem(item.id);
+  }
+  return new Promise((resolve, reject) => {
+    const tx = database.transaction(['storage_locations'], 'readwrite');
+    queueSync('storage_locations', id, 'delete');
+    const request = tx.objectStore('storage_locations').delete(id);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve();
+  });
+}
+
+export async function getStorageItems(locationId?: string): Promise<StorageItem[]> {
+  const database = await getDB();
+  return new Promise((resolve, reject) => {
+    const tx = database.transaction(['storage_items'], 'readonly');
+    const store = tx.objectStore('storage_items');
+    if (locationId) {
+      const request = store.index('location_id').getAll(locationId);
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve(request.result);
+    } else {
+      const request = store.getAll();
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => resolve(request.result);
+    }
+  });
+}
+
+export async function addStorageItem(data: Omit<StorageItem, 'id' | 'created_at'>): Promise<StorageItem> {
+  const database = await getDB();
+  const item: StorageItem = {
+    ...data,
+    id: `si_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+    _dirty: true,
+    created_at: Date.now(),
+  };
+  return new Promise((resolve, reject) => {
+    const tx = database.transaction(['storage_items'], 'readwrite');
+    const request = tx.objectStore('storage_items').add(item);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => {
+      queueSync('storage_items', item.id, 'create');
+      resolve(item);
+    };
+  });
+}
+
+export async function updateStorageItem(id: string, updates: Partial<StorageItem>): Promise<void> {
+  const database = await getDB();
+  return new Promise((resolve, reject) => {
+    const tx = database.transaction(['storage_items'], 'readwrite');
+    const store = tx.objectStore('storage_items');
+    const getReq = store.get(id);
+    getReq.onerror = () => reject(getReq.error);
+    getReq.onsuccess = () => {
+      if (!getReq.result) { reject(new Error('Storage item not found')); return; }
+      const updated = { ...getReq.result, ...updates, _dirty: true, id };
+      const putReq = store.put(updated);
+      putReq.onerror = () => reject(putReq.error);
+      putReq.onsuccess = () => {
+        queueSync('storage_items', id, 'update');
+        resolve();
+      };
+    };
+  });
+}
+
+export async function deleteStorageItem(id: string): Promise<void> {
+  const database = await getDB();
+  return new Promise((resolve, reject) => {
+    const tx = database.transaction(['storage_items'], 'readwrite');
+    queueSync('storage_items', id, 'delete');
+    const request = tx.objectStore('storage_items').delete(id);
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve();
   });
 }
 
