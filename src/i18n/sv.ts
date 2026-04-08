@@ -216,6 +216,41 @@ const sv: Translations = {
   'shopping.askAI': 'Be AI:n skapa en inköpslista från dina uppgifter.',
   'shopping.bought': 'Köpt',
 
+  // Receipt scanning
+  'receipt.scan': 'Skanna kvitto',
+  'receipt.scanning': 'Analyserar kvitto...',
+  'receipt.review': 'Granska artiklar',
+  'receipt.addAll': 'Lägg till alla',
+  'receipt.store': 'Butik',
+  'receipt.date': 'Datum',
+  'receipt.total': 'Kvittosumma',
+  'receipt.noItems': 'Inga artiklar hittades',
+
+  // Invoice
+  'invoice.title': 'Faktura',
+  'invoice.materials': 'Material',
+  'invoice.customItems': 'Övriga kostnader',
+  'invoice.addItem': 'Lägg till rad',
+  'invoice.markup': 'Påslag',
+  'invoice.subtotal': 'Delsumma',
+  'invoice.vat': 'Moms (25%)',
+  'invoice.total': 'Totalt',
+  'invoice.totalInclVat': 'Totalt inkl. moms',
+  'invoice.share': 'Dela faktura',
+  'invoice.copied': 'Kopierad till urklipp',
+  'invoice.noReceipts': 'Inga kvitton inskannade. Skanna ett kvitto i Inköpslistan.',
+  'invoice.description': 'Beskrivning',
+  'invoice.amount': 'Belopp',
+  'invoice.notes': 'Anteckningar',
+
+  // Storage
+  'storage.title': 'Lager',
+  'storage.newLocation': 'Ny plats',
+  'storage.empty': 'Inga lagerplatser. Skapa en som "Bilen" eller "Kontoret".',
+  'storage.moveToStorage': 'Flytta till lager',
+  'storage.pullFromStorage': 'Hämta från lager',
+  'storage.useOnJob': 'Använd på jobb',
+
   // Panel Schedule
   'panel.title': 'Gruppschema',
   'panel.addSchedule': '+ Nytt schema',

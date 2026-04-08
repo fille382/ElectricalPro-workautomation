@@ -214,6 +214,41 @@ const en = {
   'shopping.askAI': 'Ask the AI to create a shopping list from your tasks.',
   'shopping.bought': 'Bought',
 
+  // Receipt scanning
+  'receipt.scan': 'Scan receipt',
+  'receipt.scanning': 'Analyzing receipt...',
+  'receipt.review': 'Review items',
+  'receipt.addAll': 'Add all',
+  'receipt.store': 'Store',
+  'receipt.date': 'Date',
+  'receipt.total': 'Receipt total',
+  'receipt.noItems': 'No items found',
+
+  // Invoice
+  'invoice.title': 'Invoice',
+  'invoice.materials': 'Materials',
+  'invoice.customItems': 'Other costs',
+  'invoice.addItem': 'Add item',
+  'invoice.markup': 'Markup',
+  'invoice.subtotal': 'Subtotal',
+  'invoice.vat': 'VAT (25%)',
+  'invoice.total': 'Total',
+  'invoice.totalInclVat': 'Total incl. VAT',
+  'invoice.share': 'Share invoice',
+  'invoice.copied': 'Copied to clipboard',
+  'invoice.noReceipts': 'No receipts scanned yet. Scan a receipt in the Shopping tab.',
+  'invoice.description': 'Description',
+  'invoice.amount': 'Amount',
+  'invoice.notes': 'Notes',
+
+  // Storage
+  'storage.title': 'Storage',
+  'storage.newLocation': 'New location',
+  'storage.empty': 'No storage locations. Create one like "Van" or "Office".',
+  'storage.moveToStorage': 'Move to storage',
+  'storage.pullFromStorage': 'Pull from storage',
+  'storage.useOnJob': 'Use on job',
+
   // Panel Schedule
   'panel.title': 'Panel Schedule',
   'panel.addSchedule': '+ New Schedule',

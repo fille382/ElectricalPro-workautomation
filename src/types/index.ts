@@ -133,6 +133,86 @@ export interface ShoppingItem {
   unit: string;            // 'st', 'm', 'paket', etc.
   checked: boolean;        // bought/collected
   parent_item_id?: string; // If set, this is an accessory/sub-item
+  price?: number;          // Unit price in SEK (from receipt scan)
+  receipt_id?: string;     // Links to the Receipt that created this item
+  created_at: number;
+}
+
+// Receipt from supplier (Rexel, Ahlsell, Solar, etc.)
+export interface Receipt {
+  id: string;
+  pb_id?: string;
+  owner_id?: string;
+  _dirty?: boolean;
+  _deleted?: boolean;
+  job_id: string;
+  store_name?: string;
+  receipt_date?: string;
+  image_data: Blob;
+  total_amount?: number;
+  items_extracted: ReceiptLineItem[];
+  created_at: number;
+}
+
+export interface ReceiptLineItem {
+  name: string;
+  quantity: number;
+  unit: string;
+  unit_price: number;
+  total_price: number;
+  e_number?: string;
+  article_number?: string;
+}
+
+// Per-job invoice (one per job, material costs computed from ShoppingItems with receipt_id)
+export interface Invoice {
+  id: string;
+  pb_id?: string;
+  owner_id?: string;
+  _dirty?: boolean;
+  _deleted?: boolean;
+  job_id: string;
+  markup_percentage: number;
+  custom_line_items: InvoiceCustomItem[];
+  notes?: string;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface InvoiceCustomItem {
+  id: string;
+  description: string;
+  amount: number;
+}
+
+// Named storage location (van, office, home)
+export interface StorageLocation {
+  id: string;
+  pb_id?: string;
+  owner_id?: string;
+  _dirty?: boolean;
+  _deleted?: boolean;
+  name: string;
+  created_at: number;
+}
+
+// Item in storage (preserves purchase price from original job)
+export interface StorageItem {
+  id: string;
+  pb_id?: string;
+  owner_id?: string;
+  _dirty?: boolean;
+  _deleted?: boolean;
+  location_id: string;
+  name: string;
+  e_number?: string;
+  article_number?: string;
+  manufacturer?: string;
+  category?: string;
+  quantity: number;
+  unit: string;
+  price?: number;
+  source_job_id?: string;
   created_at: number;
 }
 

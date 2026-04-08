@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import * as db from '../utils/db';
 import { onSyncUpdate } from '../utils/sync';
-import type { Job, Task, Photo, SavedContact, ChatMessage, ShoppingItem, PanelSchedule } from '../types';
+import type { Job, Task, Photo, SavedContact, ChatMessage, ShoppingItem, PanelSchedule, Receipt, Invoice, StorageLocation, StorageItem } from '../types';
 
 /**
  * Hook to manage jobs
@@ -377,4 +377,136 @@ export function usePanelSchedules(jobId: string | null) {
   };
 
   return { schedules, loading, addSchedule, updateSchedule, deleteSchedule, refresh: loadSchedules };
+}
+
+export function useReceipts(jobId: string | null) {
+  const [receipts, setReceipts] = useState<Receipt[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const loadReceipts = async () => {
+    if (!jobId) { setReceipts([]); setLoading(false); return; }
+    try {
+      setLoading(true);
+      setReceipts(await db.getReceipts(jobId));
+    } catch (err) {
+      console.error('Failed to load receipts:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { loadReceipts(); const unsub = onSyncUpdate('receipts', loadReceipts); return unsub; }, [jobId]);
+
+  const addReceipt = async (data: Omit<Receipt, 'id' | 'created_at'>) => {
+    const receipt = await db.addReceipt(data);
+    setReceipts((prev) => [receipt, ...prev]);
+    return receipt;
+  };
+
+  const deleteReceipt = async (id: string) => {
+    await db.deleteReceipt(id);
+    setReceipts((prev) => prev.filter((r) => r.id !== id));
+  };
+
+  return { receipts, loading, addReceipt, deleteReceipt, refresh: loadReceipts };
+}
+
+export function useInvoice(jobId: string | null) {
+  const [invoice, setInvoice] = useState<Invoice | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const loadInvoice = async () => {
+    if (!jobId) { setInvoice(null); setLoading(false); return; }
+    try {
+      setLoading(true);
+      setInvoice(await db.getInvoice(jobId));
+    } catch (err) {
+      console.error('Failed to load invoice:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { loadInvoice(); const unsub = onSyncUpdate('invoices', loadInvoice); return unsub; }, [jobId]);
+
+  const updateInvoice = async (updates: Partial<Invoice>) => {
+    if (!jobId) return;
+    const updated = await db.createOrUpdateInvoice(jobId, updates);
+    setInvoice(updated);
+    return updated;
+  };
+
+  return { invoice, loading, updateInvoice, refresh: loadInvoice };
+}
+
+export function useStorageLocations() {
+  const [locations, setLocations] = useState<StorageLocation[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = async () => {
+    try {
+      setLoading(true);
+      setLocations(await db.getStorageLocations());
+    } catch (err) {
+      console.error('Failed to load storage locations:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); const unsub = onSyncUpdate('storage_locations', load); return unsub; }, []);
+
+  const addLocation = async (name: string) => {
+    const loc = await db.addStorageLocation(name);
+    setLocations((prev) => [...prev, loc]);
+    return loc;
+  };
+
+  const updateLocation = async (id: string, updates: Partial<StorageLocation>) => {
+    await db.updateStorageLocation(id, updates);
+    setLocations((prev) => prev.map((l) => (l.id === id ? { ...l, ...updates } : l)));
+  };
+
+  const deleteLocation = async (id: string) => {
+    await db.deleteStorageLocation(id);
+    setLocations((prev) => prev.filter((l) => l.id !== id));
+  };
+
+  return { locations, loading, addLocation, updateLocation, deleteLocation, refresh: load };
+}
+
+export function useStorageItems(locationId?: string) {
+  const [items, setItems] = useState<StorageItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const load = async () => {
+    try {
+      setLoading(true);
+      setItems(await db.getStorageItems(locationId));
+    } catch (err) {
+      console.error('Failed to load storage items:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { load(); const unsub = onSyncUpdate('storage_items', load); return unsub; }, [locationId]);
+
+  const addItem = async (data: Omit<StorageItem, 'id' | 'created_at'>) => {
+    const item = await db.addStorageItem(data);
+    setItems((prev) => [...prev, item]);
+    return item;
+  };
+
+  const updateItem = async (id: string, updates: Partial<StorageItem>) => {
+    await db.updateStorageItem(id, updates);
+    setItems((prev) => prev.map((i) => (i.id === id ? { ...i, ...updates } : i)));
+  };
+
+  const deleteItem = async (id: string) => {
+    await db.deleteStorageItem(id);
+    setItems((prev) => prev.filter((i) => i.id !== id));
+  };
+
+  return { items, loading, addItem, updateItem, deleteItem, refresh: load };
 }

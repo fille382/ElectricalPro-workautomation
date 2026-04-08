@@ -898,3 +898,90 @@ Extract ALL visible rows with data. Skip completely empty rows. Use "" for unrea
 
   return JSON.parse(jsonMatch[0]);
 }
+
+/**
+ * Analyze a supplier receipt photo and extract line items with prices
+ */
+export interface ReceiptAnalysisResult {
+  store_name?: string;
+  receipt_date?: string;
+  items: {
+    name: string;
+    quantity: number;
+    unit: string;
+    unit_price: number;
+    total_price: number;
+    e_number?: string;
+    article_number?: string;
+  }[];
+  total_amount?: number;
+}
+
+export async function analyzeReceipt(
+  imageBlob: Blob,
+  apiKey: string,
+  _language: string = 'sv'
+): Promise<ReceiptAnalysisResult> {
+  // Compress for API
+  const compressed = imageBlob.size > 1_000_000 ? await compressImage(imageBlob, 1600) : imageBlob;
+  const base64 = await blobToBase64(compressed);
+
+  // Detect media type
+  let mediaType = 'image/jpeg';
+  if (base64.startsWith('UklGR')) mediaType = 'image/webp';
+  else if (base64.startsWith('iVBOR')) mediaType = 'image/png';
+
+  const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
+
+  const timeoutPromise = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error('Receipt analysis timed out')), 30000)
+  );
+
+  const apiCall = client.messages.create({
+    model: 'claude-sonnet-4-20250514',
+    max_tokens: 2048,
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
+        { type: 'text', text: `Analyze this receipt/invoice from a Swedish electrical supplier (e.g. Rexel, Ahlsell, Solar, Elektroskandia, Elgiganten).
+
+Extract ALL line items with:
+- name: product name as shown on receipt
+- quantity: number of units purchased
+- unit: unit type ("st", "m", "paket", "rulle", etc.)
+- unit_price: price per unit in SEK (excluding VAT if visible)
+- total_price: total line price in SEK
+- e_number: E-nummer if visible (7-digit Swedish electrical standard number)
+- article_number: manufacturer or supplier article number if visible
+
+Also extract:
+- store_name: name of the store/supplier
+- receipt_date: date on receipt (ISO format YYYY-MM-DD)
+- total_amount: the total amount on the receipt in SEK
+
+Respond ONLY with JSON:
+{"store_name": "Rexel", "receipt_date": "2026-03-15", "total_amount": 1234.50, "items": [{"name": "Kabel EXLQ 3G2.5", "quantity": 100, "unit": "m", "unit_price": 12.50, "total_price": 1250.00, "e_number": "1234567", "article_number": "ABC123"}, ...]}
+
+If a field is not visible, omit it. Extract ALL items, even if partially readable.` }
+      ],
+    }],
+  });
+
+  const response = await Promise.race([apiCall, timeoutPromise]);
+
+  tokenTracker.log('analyzeReceipt', response.usage);
+
+  const textBlock = response.content.find((b: any) => b.type === 'text');
+  const text = textBlock && 'text' in textBlock ? textBlock.text : '';
+
+  const jsonMatch = text.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) throw new Error('Could not parse receipt response');
+
+  const result = JSON.parse(jsonMatch[0]) as ReceiptAnalysisResult;
+
+  // Ensure items is an array
+  if (!Array.isArray(result.items)) result.items = [];
+
+  return result;
+}
