@@ -15,7 +15,10 @@
       state: state
     }));
     // Redirect back to app root (same origin)
-    var base = window.location.origin + window.location.pathname.replace('oauth-callback.html', '');
+    // Handle both /oauth-callback.html and /oauth-callback (Cloudflare clean URLs)
+    var path = window.location.pathname;
+    var base = window.location.origin + path.replace(/\/oauth-callback(\.html)?$/, '/');
+    console.log('[OAuth Callback] code received, redirecting to:', base + '#/');
     window.location.href = base + '#/';
   } else {
     document.body.innerHTML = '<p>Inloggning misslyckades. <a href="#/">Tillbaka</a></p>';
