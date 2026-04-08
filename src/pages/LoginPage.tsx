@@ -39,23 +39,13 @@ export default function LoginPage() {
   };
 
   const handleGoogleLogin = async () => {
-    console.log('[Login] Button clicked, connected:', connected, 'loggingIn:', loggingIn);
-    console.log('[Login] PB URL:', pbUrl, 'envConfigured:', envConfigured);
-    console.log('[Login] VITE_POCKETBASE_URL:', import.meta.env.VITE_POCKETBASE_URL);
     setLoggingIn(true);
     setError('');
-    try {
-      console.log('[Login] Calling login()...');
-      const success = await login();
-      console.log('[Login] login() returned:', success);
-      if (success) {
-        navigate('/');
-      } else {
-        setError(t('login.loginFailed'));
-      }
-    } catch (err) {
-      console.error('[Login] login() threw:', err);
-      setError(String(err));
+    const success = await login();
+    if (success) {
+      navigate('/');
+    } else {
+      setError(t('login.loginFailed'));
     }
     setLoggingIn(false);
   };
