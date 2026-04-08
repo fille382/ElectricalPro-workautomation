@@ -130,15 +130,21 @@ export async function isOnline(): Promise<boolean> {
  * 5. App detects code in localStorage and exchanges for auth token
  */
 export async function authWithGoogle(): Promise<{ id: string; email: string; name: string } | null> {
+  console.log('[PB] authWithGoogle() called');
   const pb = await getPB();
+  console.log('[PB] getPB() returned:', pb ? 'PocketBase instance' : 'null');
   if (!pb) throw new Error('PocketBase not configured');
 
   try {
+    console.log('[PB] Fetching auth methods...');
     const authMethods = await pb.collection('users').listAuthMethods();
+    console.log('[PB] Auth methods:', JSON.stringify(authMethods.oauth2?.providers?.map((p: any) => p.name)));
     const google = authMethods.oauth2?.providers?.find((p: any) => p.name === 'google');
     if (!google) throw new Error('Google provider inte konfigurerad');
 
     const redirectUrl = window.location.origin + (import.meta.env.BASE_URL || '/') + 'oauth-callback.html';
+    console.log('[PB] Redirect URL:', redirectUrl);
+    console.log('[PB] Google authURL:', google.authURL?.substring(0, 80) + '...');
 
     // Save state for when we return from Google
     localStorage.setItem('pb_oauth_pending', JSON.stringify({
@@ -149,6 +155,7 @@ export async function authWithGoogle(): Promise<{ id: string; email: string; nam
 
     // Full-page redirect to Google — no popup!
     const authUrl = google.authURL + encodeURIComponent(redirectUrl);
+    console.log('[PB] Redirecting to:', authUrl.substring(0, 100) + '...');
     window.location.href = authUrl;
 
     // Won't reach here
