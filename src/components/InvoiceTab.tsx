@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { useTranslation } from '../contexts/I18nContext';
+// import { useTranslation } from '../contexts/I18nContext';
 import type { ShoppingItem, Invoice, InvoiceCustomItem, Receipt } from '../types';
 import { getSettings } from '../utils/db';
 
@@ -37,7 +37,7 @@ export default function InvoiceTab({
   jobName,
   jobAddress,
 }: InvoiceTabProps) {
-  const _t = useTranslation();
+
   const [companyName, setCompanyName] = useState('');
 
   useEffect(() => {
