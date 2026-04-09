@@ -30,7 +30,6 @@ interface ReceiptGroup {
 }
 
 export default function InvoiceTab({
-  jobId,
   shoppingItems,
   receipts,
   invoice,
@@ -38,7 +37,7 @@ export default function InvoiceTab({
   jobName,
   jobAddress,
 }: InvoiceTabProps) {
-  const t = useTranslation();
+  const _t = useTranslation();
   const [companyName, setCompanyName] = useState('');
 
   useEffect(() => {

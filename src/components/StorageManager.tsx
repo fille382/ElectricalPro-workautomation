@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import type { StorageLocation, StorageItem, ShoppingItem } from '../types';
+import type { StorageLocation, StorageItem } from '../types';
 
 interface StorageManagerProps {
   locations: StorageLocation[];
@@ -12,10 +12,6 @@ interface StorageManagerProps {
   mode?: 'full' | 'picker';
   onPickLocation?: (locationId: string) => void;
   onClose?: () => void;
-}
-
-function generateId(): string {
-  return `sloc_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
 }
 
 function formatPrice(price: number): string {

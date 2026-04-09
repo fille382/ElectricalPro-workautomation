@@ -927,7 +927,7 @@ export async function analyzeReceipt(
   const base64 = await blobToBase64(compressed);
 
   // Detect media type
-  let mediaType = 'image/jpeg';
+  let mediaType: 'image/jpeg' | 'image/webp' | 'image/png' | 'image/gif' = 'image/jpeg';
   if (base64.startsWith('UklGR')) mediaType = 'image/webp';
   else if (base64.startsWith('iVBOR')) mediaType = 'image/png';
 
@@ -968,7 +968,7 @@ If a field is not visible, omit it. Extract ALL items, even if partially readabl
     }],
   });
 
-  const response = await Promise.race([apiCall, timeoutPromise]);
+  const response = await Promise.race([apiCall, timeoutPromise]) as Anthropic.Message;
 
   tokenTracker.log('analyzeReceipt', response.usage);
 
